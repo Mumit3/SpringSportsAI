@@ -23,7 +23,6 @@ from pipeline import (
     ShotDetector, Analytics, Annotator,
 )
 from pipeline import config
-from pipeline.shot_detector import Outcome
 
 
 def process_svo(
@@ -79,52 +78,53 @@ def process_svo(
 
     t0 = time.time()
 
-    with reader:
-        for frame in reader:
-            idx = frame.index
+    try:
+        with reader:
+            for frame in reader:
+                idx = frame.index
 
-            # ── dynamic ball confidence during flight ─────────────────────────
-            ball_conf = (
-                config.BALL_CONF_FLIGHT
-                if tracker._in_flight
-                else config.BALL_CONF_NORMAL
-            )
+                # ── dynamic ball confidence during flight ─────────────────────────
+                ball_conf = (
+                    config.BALL_CONF_FLIGHT
+                    if tracker._in_flight
+                    else config.BALL_CONF_NORMAL
+                )
 
-            # ── detect ────────────────────────────────────────────────────────
-            ball_det, hoop_det = detector.detect(frame.image, ball_conf)
+                # ── detect ────────────────────────────────────────────────────────
+                ball_det, hoop_det = detector.detect(frame.image, ball_conf)
 
-            # ── update 3-D hoop position (cached + EMA-smoothed) ──────────────
-            if hoop_det is not None:
-                new_h3d = reader.pixel_to_3d(frame.point_cloud, hoop_det.cx, hoop_det.cy)
-                if new_h3d is not None and config.HOOP_DEPTH_MIN < new_h3d[2] < config.HOOP_DEPTH_MAX:
-                    if hoop_3d is None:
-                        hoop_3d = new_h3d.copy()
-                    else:
-                        hoop_3d = (1 - hoop_ema_alpha) * hoop_3d + hoop_ema_alpha * new_h3d
+                # ── update 3-D hoop position (cached + EMA-smoothed) ──────────────
+                if hoop_det is not None:
+                    new_h3d = reader.pixel_to_3d(frame.point_cloud, hoop_det.cx, hoop_det.cy)
+                    if new_h3d is not None and config.HOOP_DEPTH_MIN < new_h3d[2] < config.HOOP_DEPTH_MAX:
+                        if hoop_3d is None:
+                            hoop_3d = new_h3d.copy()
+                        else:
+                            hoop_3d = (1 - hoop_ema_alpha) * hoop_3d + hoop_ema_alpha * new_h3d
 
-            # ── track ball ────────────────────────────────────────────────────
-            tracker_result = tracker.update(frame.image, frame.point_cloud, ball_det)
+                # ── track ball ────────────────────────────────────────────────────
+                tracker_result = tracker.update(frame.image, frame.point_cloud, ball_det)
 
-            # ── detect shots ──────────────────────────────────────────────────
-            completed_shot = shot_det.update(idx, tracker_result, hoop_det, hoop_3d)
-            if completed_shot is not None:
-                analytics.add(completed_shot)
+                # ── detect shots ──────────────────────────────────────────────────
+                completed_shot = shot_det.update(idx, tracker_result, hoop_det, hoop_3d)
+                if completed_shot is not None:
+                    analytics.add(completed_shot)
 
-            # ── annotate + write frame ─────────────────────────────────────────
-            annotated = annotator.draw(
-                frame.image, ball_det, hoop_det,
-                tracker_result, completed_shot, hoop_3d, idx,
-            )
-            writer.write(annotated)
+                # ── annotate + write frame ─────────────────────────────────────────
+                annotated = annotator.draw(
+                    frame.image, ball_det, hoop_det,
+                    tracker_result, completed_shot, hoop_3d, idx,
+                )
+                writer.write(annotated)
 
-            # ── progress ──────────────────────────────────────────────────────
-            if idx % 30 == 0 or idx == total - 1:
-                frac = min((idx + 1) / max(total, 1), 0.98)
-                elapsed = time.time() - t0
-                fps_est = (idx + 1) / elapsed if elapsed > 0 else 0
-                _cb(frac, f"Frame {idx+1}/{total}  ({fps_est:.1f} fps)")
-
-    writer.release()
+                # ── progress ──────────────────────────────────────────────────────
+                if idx % 30 == 0 or idx == total - 1:
+                    frac = min((idx + 1) / max(total, 1), 0.98)
+                    elapsed = time.time() - t0
+                    fps_est = (idx + 1) / elapsed if elapsed > 0 else 0
+                    _cb(frac, f"Frame {idx+1}/{total}  ({fps_est:.1f} fps)")
+    finally:
+        writer.release()
 
     # ── save analytics ────────────────────────────────────────────────────────
     paths   = analytics.save(out_dir)
@@ -166,7 +166,7 @@ def _cli():
         bar     = "█" * filled + "░" * (bar_len - filled)
         print(f"\r[{bar}] {frac*100:5.1f}%  {msg:<40}", end="", flush=True)
 
-    result = process_svo(args.svo, progress_cb=_print_progress)
+    process_svo(args.svo, progress_cb=_print_progress)
     print()   # newline after progress bar
 
 

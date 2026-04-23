@@ -213,9 +213,6 @@ class ShotDetector:
         arc_timeout = self._arc_frames >= config.ARC_MAX_FRAMES
 
         if (ball_descending or arc_timeout) and self._arc_frames >= config.ARC_MIN_FRAMES:
-            # Arc ended without a conclusive classification — call it MISS
-            if self._arc_frames + config.MAKE_CHECK_FRAMES < arc_timeout:
-                return None   # Still within check window
             return self._finalise(Outcome.MISS, frame_idx)
 
         return None

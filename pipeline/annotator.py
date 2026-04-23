@@ -7,7 +7,7 @@ import cv2
 
 from .detector import Detection
 from .tracker import TrackerResult
-from .shot_detector import ShotEvent, Outcome, _ArcState
+from .shot_detector import ShotEvent, Outcome
 from . import config
 
 

@@ -71,7 +71,7 @@ class OpticalFlowTracker:
         if p1 is None or st is None:
             return None
 
-        good = p1[st.ravel() == 1]
+        good = p1[st.ravel() == 1].reshape(-1, 2)   # ensure shape (M, 2)
         if len(good) < 3:
             self.reset()
             return None
