@@ -24,7 +24,7 @@ OUTPUT_PATH = MODELS_DIR / "basketball.pt"
 WORKSPACE   = "roboflow-jvuqo"          # public workspace on Universe
 PROJECT     = "basketball-and-hoop-7xk0h"
 VERSION     = 1
-FORMAT      = "yolov8"
+FORMAT      = "yolov8pytorch"
 
 
 def download(api_key: str) -> None:
