@@ -105,8 +105,6 @@ class SVOReader:
 
     def __next__(self) -> Frame:
         err = self._zed.grab(self._runtime)
-        if err == sl.ERROR_CODE.END_OF_SVO_FILE_REACHED:
-            raise StopIteration
         if err != sl.ERROR_CODE.SUCCESS:
             raise StopIteration
 
