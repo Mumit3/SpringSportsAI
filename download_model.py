@@ -51,8 +51,15 @@ def download(api_key: str) -> None:
     print(f"[*] Downloading {FORMAT} dataset to models/…")
     dataset = version.download(FORMAT, location=str(MODELS_DIR / "dataset"))
 
-    # After download, look for a best.pt / last.pt in the dataset dir
+    # Extract zip if Roboflow didn't unpack it automatically
     dataset_dir = Path(dataset.location)
+    for zf in dataset_dir.rglob("*.zip"):
+        print(f"[*] Extracting {zf} …")
+        import zipfile
+        with zipfile.ZipFile(zf, "r") as z:
+            z.extractall(dataset_dir)
+        zf.unlink()
+
     pt_candidates = list(dataset_dir.rglob("*.pt"))
 
     if pt_candidates:
