@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% block title %}Select Session — Basketball Analytics{% endblock %}
+
+{% block content %}
+<div class="page-index">
+
+  <!-- ── Process new session ─────────────────────────────────── -->
+  <section class="card">
+    <h2 class="card-title">Process SVO File</h2>
+
+    {% if svo_files %}
+    <div class="file-grid">
+      {% for name in svo_files %}
+      <button class="file-btn" data-filename="{{ name }}">
+        <span class="file-icon">📹</span>
+        <span class="file-name">{{ name }}</span>
+      </button>
+      {% endfor %}
+    </div>
+    {% else %}
+    <p class="hint">No .svo files found in <code>svo_files/</code>. Copy your recordings there and refresh.</p>
+    {% endif %}
+
+    <!-- Progress panel (hidden until processing starts) -->
+    <div id="progress-panel" class="progress-panel hidden">
+      <div class="progress-info">
+        <span id="progress-msg">Starting…</span>
+        <span id="progress-pct">0%</span>
+      </div>
+      <div class="progress-bar-track">
+        <div id="progress-bar" class="progress-bar-fill" style="width:0%"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── Previous sessions ──────────────────────────────────── -->
+  {% if sessions %}
+  <section class="card">
+    <h2 class="card-title">Previous Sessions</h2>
+    <div class="sessions-list">
+      {% for s in sessions %}
+      {% set sm = s.summary %}
+      <a href="/results/{{ s.job_id }}" class="session-row">
+        <span class="session-name">{{ s.job_id }}</span>
+        <span class="session-stat">{{ sm.total_shots }} shots</span>
+        <span class="session-stat make">{{ sm.makes }} makes</span>
+        <span class="session-stat pct">{{ sm.fg_pct }}%</span>
+        <span class="session-arrow">→</span>
+      </a>
+      {% endfor %}
+    </div>
+  </section>
+  {% endif %}
+
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/main.js') }}"></script>
+{% endblock %}

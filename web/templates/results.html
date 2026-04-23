@@ -1,0 +1,146 @@
+{% extends "base.html" %}
+{% block title %}Results — {{ job_id }}{% endblock %}
+
+{% block head %}
+<!-- Plotly loaded from CDN (requires brief internet on first load; cached after) -->
+<script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
+{% endblock %}
+
+{% block content %}
+<div class="page-results">
+
+  <!-- ── Back link ──────────────────────────────────────────── -->
+  <a href="/" class="back-link">← Back to sessions</a>
+  <h1 class="session-title">{{ job_id }}</h1>
+
+  <!-- ── Summary bar ────────────────────────────────────────── -->
+  <div class="summary-bar">
+    <div class="stat-pill">
+      <span class="stat-num">{{ summary.total_shots }}</span>
+      <span class="stat-label">Shots</span>
+    </div>
+    <div class="stat-pill make">
+      <span class="stat-num">{{ summary.makes }}</span>
+      <span class="stat-label">Makes</span>
+    </div>
+    <div class="stat-pill miss">
+      <span class="stat-num">{{ summary.misses }}</span>
+      <span class="stat-label">Misses</span>
+    </div>
+    <div class="stat-pill highlight">
+      <span class="stat-num">{{ summary.fg_pct }}%</span>
+      <span class="stat-label">FG%</span>
+    </div>
+    <div class="stat-pill">
+      <span class="stat-num">{{ summary.avg_release_angle_deg }}°</span>
+      <span class="stat-label">Avg Angle</span>
+    </div>
+    <div class="stat-pill">
+      <span class="stat-num">{{ summary.avg_arc_height_m }} m</span>
+      <span class="stat-label">Avg Arc</span>
+    </div>
+    <div class="stat-pill">
+      <span class="stat-num">{{ summary.avg_shot_distance_m }} m</span>
+      <span class="stat-label">Avg Dist</span>
+    </div>
+    <div class="stat-pill">
+      <span class="stat-num">{{ summary.avg_release_speed_mps }} m/s</span>
+      <span class="stat-label">Avg Speed</span>
+    </div>
+  </div>
+
+  <!-- ── Video player ────────────────────────────────────────── -->
+  <section class="card">
+    <h2 class="card-title">Annotated Video</h2>
+    <div class="video-wrap">
+      <video id="main-video" controls preload="metadata"
+             src="/video/{{ job_id }}">
+        Your browser does not support HTML5 video.
+      </video>
+    </div>
+  </section>
+
+  <!-- ── Trajectory chart ───────────────────────────────────── -->
+  {% if shots %}
+  <section class="card">
+    <h2 class="card-title">Shot Trajectories</h2>
+    <div id="traj-chart"></div>
+  </section>
+
+  <!-- ── Shot cards ─────────────────────────────────────────── -->
+  <section class="card">
+    <h2 class="card-title">Shot Breakdown</h2>
+    <div class="shot-grid">
+      {% for s in shots %}
+      <div class="shot-card {{ s.outcome }}">
+        <div class="shot-card-header">
+          <span class="shot-num">Shot {{ s.shot_id }}</span>
+          <span class="outcome-badge {{ s.outcome }}">{{ s.outcome|upper }}</span>
+        </div>
+        <div class="shot-stats">
+          <div class="shot-stat">
+            <span class="shot-stat-val">{{ s.release_angle_deg }}°</span>
+            <span class="shot-stat-lbl">Release Angle</span>
+          </div>
+          <div class="shot-stat">
+            <span class="shot-stat-val">{{ s.arc_height_m }} m</span>
+            <span class="shot-stat-lbl">Arc Height</span>
+          </div>
+          <div class="shot-stat">
+            <span class="shot-stat-val">{{ s.shot_distance_m }} m</span>
+            <span class="shot-stat-lbl">Distance</span>
+          </div>
+          <div class="shot-stat">
+            <span class="shot-stat-val">{{ s.release_speed_mps }} m/s</span>
+            <span class="shot-stat-lbl">Release Speed</span>
+          </div>
+        </div>
+        <!-- Jump to frame in video -->
+        <button class="goto-btn"
+                data-frame="{{ s.trigger_frame }}"
+                data-fps="{{ summary.get('fps', 30) if summary else 30 }}">
+          ▶ Jump to shot
+        </button>
+      </div>
+      {% endfor %}
+    </div>
+  </section>
+  {% else %}
+  <section class="card">
+    <p class="hint">No shots were detected in this session.</p>
+  </section>
+  {% endif %}
+
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  // Trajectory chart
+  const traces = {{ traces|safe }};
+  if (traces && traces.length > 0) {
+    Plotly.newPlot('traj-chart', traces, {
+      paper_bgcolor: '#161b22',
+      plot_bgcolor:  '#0d1117',
+      font:   { color: '#e6edf3' },
+      xaxis:  { title: 'Horizontal Position (px)', gridcolor: '#30363d', color: '#e6edf3' },
+      yaxis:  { title: 'Height (px, inverted)',     gridcolor: '#30363d', color: '#e6edf3' },
+      margin: { t: 20, b: 50, l: 60, r: 20 },
+      legend: { bgcolor: '#161b22', bordercolor: '#30363d', borderwidth: 1 },
+    }, { responsive: true });
+  }
+
+  // Jump-to-frame buttons
+  const video = document.getElementById('main-video');
+  document.querySelectorAll('.goto-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const frame = parseInt(btn.dataset.frame, 10);
+      const fps   = parseFloat(btn.dataset.fps) || 30;
+      video.currentTime = frame / fps;
+      video.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      video.play();
+    });
+  });
+</script>
+<script src="{{ url_for('static', filename='js/main.js') }}"></script>
+{% endblock %}

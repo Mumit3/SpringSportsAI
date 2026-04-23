@@ -1,0 +1,11 @@
+# ZED SDK Python bindings are installed by the ZED SDK installer, NOT via pip.
+# Make sure ZED SDK 5.1.2 is installed before running setup.sh.
+
+ultralytics>=8.2.0
+flask>=3.0.0
+flask-cors>=4.0.0
+numpy>=1.21.0
+plotly>=5.18.0
+pandas>=1.5.0
+# opencv-python already installed (4.9.0.80)
+# supervision already installed (0.24.0)

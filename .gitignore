@@ -1,0 +1,22 @@
+# SVO recordings — too large for git
+svo_files/
+
+# Processed outputs
+outputs/
+
+# Downloaded model weights
+models/*.pt
+models/dataset/
+models/train/
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.env
+venv/
+env/
+
+# OS
+.DS_Store
+Thumbs.db

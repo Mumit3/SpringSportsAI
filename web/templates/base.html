@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>{% block title %}Basketball Analytics{% endblock %}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}"/>
+  {% block head %}{% endblock %}
+</head>
+<body>
+  <header class="site-header">
+    <a href="/" class="logo">
+      <span class="logo-icon">🏀</span>
+      <span class="logo-text">Basketball Analytics</span>
+    </a>
+    <span class="logo-sub">SDP-113 · Binghamton University</span>
+  </header>
+
+  <main class="main-content">
+    {% block content %}{% endblock %}
+  </main>
+
+  <footer class="site-footer">
+    <span>AI Assisted Sports Analytics &mdash; SDP-113</span>
+  </footer>
+
+  {% block scripts %}{% endblock %}
+</body>
+</html>
