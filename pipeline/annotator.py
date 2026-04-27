@@ -17,9 +17,10 @@ def _lerp_color(c1, c2, t):
 
 class Annotator:
 
-    def __init__(self, frame_width: int, frame_height: int):
+    def __init__(self, frame_width: int, frame_height: int, version: str = "v3"):
         self._fw = frame_width
         self._fh = frame_height
+        self._version = version
 
         # Font
         self._font       = cv2.FONT_HERSHEY_SIMPLEX
@@ -50,6 +51,7 @@ class Annotator:
         self._draw_predicted_arc(out, tracker.predicted_arc_2d)
         self._draw_ball(out, ball_det, tracker)
         self._draw_hud(out, tracker, frame_idx)
+        self._draw_version(out)
 
         if shot is not None:
             self._result_display_frames = 90   # show result for 3 s @ 30 fps
@@ -180,6 +182,20 @@ class Annotator:
             cv2.putText(frame, line, (10, y_start),
                         self._font, self._font_small, (230,230,230), 1, cv2.LINE_AA)
             y_start += 22
+
+    # ── version label (top-center) ────────────────────────────────────────────
+
+    def _draw_version(self, frame: np.ndarray) -> None:
+        text = self._version
+        scale = 1.1
+        thickness = 2
+        (tw, th), _ = cv2.getTextSize(text, self._font, scale, thickness)
+        x = (self._fw - tw) // 2
+        y = th + 14
+        # Shadow
+        cv2.putText(frame, text, (x+2, y+2), self._font, scale, (0,0,0), thickness+2, cv2.LINE_AA)
+        # Foreground
+        cv2.putText(frame, text, (x, y), self._font, scale, (255,255,255), thickness, cv2.LINE_AA)
 
     # ── shot result banner ────────────────────────────────────────────────────
 
