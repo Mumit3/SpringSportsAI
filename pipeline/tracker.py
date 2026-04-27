@@ -127,6 +127,24 @@ class BallTracker:
         self._in_flight = False
         self._trail.clear()
 
+    def _ball_size_matches_depth(self, det: Detection, depth: float) -> bool:
+        """Check that detection pixel size matches a basketball at this depth.
+
+        At depth Z, a regulation basketball (diameter D) appears with pixel
+        diameter = fx * D / Z. Detections that don't match are likely false
+        positives (jerseys, faces, hands, the rim itself).
+        """
+        if depth <= 0.5:
+            return True   # too close to validate reliably
+        expected_px = self._reader.info.fx * config.BALL_DIAMETER_M / depth
+        actual_px   = (det.w + det.h) / 2.0
+        if expected_px <= 0:
+            return True
+        ratio = actual_px / expected_px
+        lo = 1.0 - config.BALL_SIZE_TOLERANCE
+        hi = 1.0 + config.BALL_SIZE_TOLERANCE
+        return lo <= ratio <= hi
+
     # ── internal ──────────────────────────────────────────────────────────────
 
     def _compute(
@@ -142,7 +160,7 @@ class BallTracker:
         # ── Layer 1: YOLO ─────────────────────────────────────────────────────
         if ball_det is not None:
             p3d = self._reader.pixel_to_3d(pc, ball_det.cx, ball_det.cy)
-            if p3d is not None:
+            if p3d is not None and self._ball_size_matches_depth(ball_det, float(p3d[2])):
                 pos3d  = p3d
                 source = "yolo"
                 self._missed = 0
