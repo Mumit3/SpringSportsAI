@@ -117,10 +117,17 @@ class BallHoopDetector:
 
         fresh = self._detect_hoop(frame)
         if fresh is not None:
+            # If we have a stable cache, reject detections that jump too far
+            if self._hoop_cache is not None and self._hoop_stable_count > 5:
+                dx = abs(fresh.cx - self._hoop_cache.cx)
+                dy = abs(fresh.cy - self._hoop_cache.cy)
+                if dx > 120 or dy > 120:
+                    fresh = None  # reject — likely a false positive
+
+        if fresh is not None:
             self._hoop_cache = fresh
             self._hoop_stable_count += 1
         elif self._hoop_stable_count > 0:
-            # Keep cache but reduce confidence gradually
             self._hoop_stable_count = max(0, self._hoop_stable_count - 1)
 
         return self._hoop_cache
@@ -145,7 +152,6 @@ class BallHoopDetector:
         h, w = frame.shape[:2]
         # Hoop is in the upper 65 % of the frame
         roi_frame = frame[:int(h * 0.65), :]
-        roi_h     = roi_frame.shape[0]
 
         hsv  = cv2.cvtColor(roi_frame, cv2.COLOR_BGR2HSV)
         lo1, hi1 = np.array(config.HOOP_HSV_LOWER1), np.array(config.HOOP_HSV_UPPER1)

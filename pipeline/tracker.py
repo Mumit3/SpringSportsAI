@@ -158,11 +158,12 @@ class BallTracker:
         # ── Layer 2: Optical Flow ─────────────────────────────────────────────
         if pos3d is None and self._missed < config.OF_MAX_MISSED_FRAMES:
             of_2d = self._of.track(gray)
-            # Reject OF result if it landed on the hoop — rim confuses tracker
-            if of_2d is not None and hoop_det is not None:
+            # Reject OF result if it landed on the hoop and ball is not near hoop
+            # (allow overlap when ball is legitimately approaching the rim)
+            if of_2d is not None and hoop_det is not None and self._missed > 3:
                 u_of, v_of = of_2d
                 hx1, hy1, hx2, hy2 = hoop_det.bbox
-                pad = 15
+                pad = 10
                 if (hx1-pad <= u_of <= hx2+pad) and (hy1-pad <= v_of <= hy2+pad):
                     of_2d = None
                     self._of.reset()
@@ -199,7 +200,6 @@ class BallTracker:
 
         # ── Derived values ────────────────────────────────────────────────────
         vel3d  = self._kf.get_velocity() if self._kf.initialized else None
-        speed  = float(np.linalg.norm(vel3d)) if vel3d is not None else 0.0
 
         # In-flight: upward velocity > 0.5 m/s or fresh detection within last 10 frames
         if vel3d is not None:
