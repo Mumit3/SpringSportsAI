@@ -29,6 +29,10 @@ pip3 install --no-cache-dir "flask>=3.0.0" "flask-cors>=4.0.0"
 echo "[*] Installing Plotly and Pandas…"
 pip3 install --no-cache-dir "plotly>=5.18.0" "pandas>=1.5.0"
 
+# ── Roboflow inference SDK ────────────────────────────────────────────────────
+echo "[*] Installing Roboflow inference SDK…"
+pip3 install --no-cache-dir "inference"
+
 echo ""
 echo "=== Setup complete! ==="
 echo ""

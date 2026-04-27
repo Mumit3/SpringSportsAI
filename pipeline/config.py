@@ -28,10 +28,15 @@ COCO_BALL_CLASS = 32      # "sports ball"
 COCO_PERSON_CLASS = 0     # "person"
 
 # Custom model class names (set to match your .pt label order)
-CUSTOM_BALL_NAMES          = {"basketball", "ball"}
-CUSTOM_HOOP_NAMES          = {"basketball-hoop", "hoop", "rim", "net"}
+CUSTOM_BALL_NAMES           = {"basketball", "ball"}
+CUSTOM_HOOP_NAMES           = {"basketball-hoop", "hoop", "rim", "net"}
 CUSTOM_BALL_IN_BASKET_NAMES = {"ball-in-basket"}
-BALL_IN_BASKET_CONF        = 0.35
+BALL_IN_BASKET_CONF         = 0.35
+
+# Roboflow hosted inference (requires internet on first run to cache model)
+USE_ROBOFLOW_API  = True
+ROBOFLOW_MODEL_ID = "basketball-player-detection-3-ycjdo/4"
+ROBOFLOW_API_KEY  = "nDbJ4KcE23smyfdVVTFT"
 
 # ── Kalman filter ─────────────────────────────────────────────────────────────
 KALMAN_PROCESS_NOISE     = 2.0   # higher = trusts measurements more

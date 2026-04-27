@@ -60,8 +60,25 @@ class BallHoopDetector:
     # ── model loading ─────────────────────────────────────────────────────────
 
     def _load_model(self) -> None:
+        # Try Roboflow inference SDK first (downloads + caches model on first run)
+        if config.USE_ROBOFLOW_API:
+            try:
+                from inference import get_model
+                self._model      = get_model(
+                    model_id = config.ROBOFLOW_MODEL_ID,
+                    api_key  = config.ROBOFLOW_API_KEY,
+                )
+                self._model_type = "roboflow_api"
+                print(f"[Detector] Roboflow API model loaded: {config.ROBOFLOW_MODEL_ID}")
+                return
+            except ImportError:
+                print("[Detector] inference SDK not installed — run: pip3 install inference")
+            except Exception as e:
+                print(f"[Detector] Roboflow API unavailable ({e}). Falling back to local model.")
+
+        # Fall back to local YOLO
         try:
-            from ultralytics import YOLO  # noqa: import inside fn – optional dep
+            from ultralytics import YOLO
         except ImportError:
             print("[Detector] ultralytics not installed — run setup.sh first.")
             return
@@ -86,20 +103,76 @@ class BallHoopDetector:
         """Return (ball, hoop, ball_in_basket). Any may be None."""
         self._frame_count += 1
 
-        # Run model once per frame at the lowest required confidence
-        results = None
-        if self._model is not None:
-            min_conf = min(
-                ball_conf_override or config.BALL_CONF_NORMAL,
-                config.HOOP_CONF,
-                config.BALL_IN_BASKET_CONF,
+        if self._model_type == "roboflow_api":
+            all_dets       = self._infer_roboflow(frame, ball_conf_override)
+            ball           = self._clean_ball(
+                self._filter_dets(all_dets, config.CUSTOM_BALL_NAMES,
+                                  ball_conf_override or config.BALL_CONF_NORMAL)
             )
-            results = self._model(frame, verbose=False, conf=min_conf)[0]
+            ball_in_basket = self._filter_dets(
+                all_dets, config.CUSTOM_BALL_IN_BASKET_NAMES, config.BALL_IN_BASKET_CONF
+            )
+            hoop = self._get_hoop(frame, None)   # model has no hoop class — use HSV
+        else:
+            # Run local YOLO once per frame at the lowest required confidence
+            results = None
+            if self._model is not None:
+                min_conf = min(
+                    ball_conf_override or config.BALL_CONF_NORMAL,
+                    config.HOOP_CONF,
+                    config.BALL_IN_BASKET_CONF,
+                )
+                results = self._model(frame, verbose=False, conf=min_conf)[0]
 
-        ball           = self._clean_ball(self._detect_ball(results, ball_conf_override))
-        hoop           = self._get_hoop(frame, results)
-        ball_in_basket = self._detect_ball_in_basket(results)
+            ball           = self._clean_ball(self._detect_ball(results, ball_conf_override))
+            hoop           = self._get_hoop(frame, results)
+            ball_in_basket = self._detect_ball_in_basket(results)
+
         return ball, hoop, ball_in_basket
+
+    # ── Roboflow API inference ────────────────────────────────────────────────
+
+    def _infer_roboflow(
+        self,
+        frame: np.ndarray,
+        conf_override: Optional[float] = None,
+    ) -> List[Detection]:
+        """Call hosted Roboflow model, return all detections as Detection objects."""
+        min_conf = min(
+            conf_override or config.BALL_CONF_NORMAL,
+            config.BALL_IN_BASKET_CONF,
+        )
+        try:
+            result = self._model.infer(frame, confidence=min_conf)[0]
+        except Exception:
+            return []
+
+        dets = []
+        for pred in result.predictions:
+            x1 = int(pred.x - pred.width  / 2)
+            y1 = int(pred.y - pred.height / 2)
+            x2 = int(pred.x + pred.width  / 2)
+            y2 = int(pred.y + pred.height / 2)
+            dets.append(Detection(x1, y1, x2, y2,
+                                  float(pred.confidence),
+                                  pred.class_name.lower(),
+                                  "roboflow_api"))
+        return dets
+
+    @staticmethod
+    def _filter_dets(
+        dets: List[Detection],
+        target_names: set,
+        min_conf: float,
+    ) -> Optional[Detection]:
+        """Pick highest-confidence detection whose class name is in target_names."""
+        best_conf = min_conf - 1e-6
+        best: Optional[Detection] = None
+        for det in dets:
+            if det.class_name in target_names and det.confidence > best_conf:
+                best_conf = det.confidence
+                best = det
+        return best
 
     # ── ball detection ────────────────────────────────────────────────────────
 
