@@ -17,9 +17,10 @@ def _lerp_color(c1, c2, t):
 
 class Annotator:
 
-    def __init__(self, frame_width: int, frame_height: int):
+    def __init__(self, frame_width: int, frame_height: int, version: int = 1):
         self._fw = frame_width
         self._fh = frame_height
+        self._version = version
 
         # Font
         self._font       = cv2.FONT_HERSHEY_SIMPLEX
@@ -159,7 +160,7 @@ class Annotator:
         tracker:  TrackerResult,
         frame_idx: int,
     ) -> None:
-        lines = [f"Frame: {frame_idx}"]
+        lines = [f"Frame: {frame_idx}  |  Run v{self._version}"]
 
         if tracker.velocity_3d is not None:
             vy  = tracker.velocity_3d[1]

@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import time
 from pathlib import Path
 from typing import Callable, Optional
@@ -59,10 +60,19 @@ def process_svo(
         frame_height = reader.info.height,
     )
     analytics = Analytics(svo_filename=svo_path.name, fps=reader.info.fps)
-    annotator = Annotator(frame_width=reader.info.width, frame_height=reader.info.height)
+    annotator = Annotator(frame_width=reader.info.width, frame_height=reader.info.height, version=run_version)
+
+    # ── version numbering ─────────────────────────────────────────────────────
+    existing = list(out_dir.glob("annotated_v*.mp4"))
+    versions = [
+        int(m.group(1))
+        for f in existing
+        if (m := re.search(r'v(\d+)', f.name))
+    ]
+    run_version = max(versions) + 1 if versions else 1
 
     # ── video writer ──────────────────────────────────────────────────────────
-    video_path = out_dir / "annotated.mp4"
+    video_path = out_dir / f"annotated_v{run_version}.mp4"
     fourcc     = cv2.VideoWriter_fourcc(*"mp4v")
     writer     = cv2.VideoWriter(
         str(video_path), fourcc,
@@ -91,7 +101,7 @@ def process_svo(
                 )
 
                 # ── detect ────────────────────────────────────────────────────────
-                ball_det, hoop_det = detector.detect(frame.image, ball_conf)
+                ball_det, hoop_det, ball_in_basket = detector.detect(frame.image, ball_conf)
 
                 # ── update 3-D hoop position (cached + EMA-smoothed) ──────────────
                 if hoop_det is not None:
@@ -106,7 +116,7 @@ def process_svo(
                 tracker_result = tracker.update(frame.image, frame.point_cloud, ball_det, hoop_det)
 
                 # ── detect shots ──────────────────────────────────────────────────
-                completed_shot = shot_det.update(idx, tracker_result, hoop_det, hoop_3d)
+                completed_shot = shot_det.update(idx, tracker_result, hoop_det, hoop_3d, ball_in_basket)
                 if completed_shot is not None:
                     analytics.add(completed_shot)
 

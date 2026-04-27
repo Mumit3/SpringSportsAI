@@ -28,8 +28,10 @@ COCO_BALL_CLASS = 32      # "sports ball"
 COCO_PERSON_CLASS = 0     # "person"
 
 # Custom model class names (set to match your .pt label order)
-CUSTOM_BALL_NAMES = {"basketball", "ball"}
-CUSTOM_HOOP_NAMES = {"basketball-hoop", "hoop", "rim", "net"}
+CUSTOM_BALL_NAMES          = {"basketball", "ball"}
+CUSTOM_HOOP_NAMES          = {"basketball-hoop", "hoop", "rim", "net"}
+CUSTOM_BALL_IN_BASKET_NAMES = {"ball-in-basket"}
+BALL_IN_BASKET_CONF        = 0.35
 
 # ── Kalman filter ─────────────────────────────────────────────────────────────
 KALMAN_PROCESS_NOISE     = 2.0   # higher = trusts measurements more

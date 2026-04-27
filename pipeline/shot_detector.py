@@ -95,10 +95,11 @@ class ShotDetector:
 
     def update(
         self,
-        frame_idx:  int,
-        tracker:    TrackerResult,
-        hoop_det:   Optional[Detection],
-        hoop_3d:    Optional[np.ndarray],
+        frame_idx:      int,
+        tracker:        TrackerResult,
+        hoop_det:       Optional[Detection],
+        hoop_3d:        Optional[np.ndarray],
+        ball_in_basket: Optional[Detection] = None,
     ) -> Optional[ShotEvent]:
         """Returns a newly completed ShotEvent, or None."""
         if self._cooldown > 0:
@@ -109,6 +110,10 @@ class ShotDetector:
             self._ball_y_window.append(tracker.position_2d[1])
         if len(self._ball_y_window) > config.PIXEL_RISE_WINDOW:
             self._ball_y_window.pop(0)
+
+        # ball-in-basket is a definitive MAKE signal
+        if ball_in_basket is not None and self._state == _ArcState.FLIGHT:
+            return self._finalise(Outcome.MAKE, frame_idx)
 
         if self._state == _ArcState.IDLE:
             return self._check_trigger(frame_idx, tracker, hoop_3d)

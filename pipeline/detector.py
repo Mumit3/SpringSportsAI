@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional, Tuple
+from typing import List, Optional, Tuple
 import numpy as np
 import cv2
 
@@ -52,6 +52,9 @@ class BallHoopDetector:
         self._hoop_cache: Optional[Detection] = None
         self._hoop_stable_count = 0
 
+        # Ball detection history for cleaning
+        self._ball_history: List[Detection] = []
+
         self._load_model()
 
     # ── model loading ─────────────────────────────────────────────────────────
@@ -79,50 +82,87 @@ class BallHoopDetector:
         self,
         frame: np.ndarray,
         ball_conf_override: Optional[float] = None,
-    ) -> Tuple[Optional[Detection], Optional[Detection]]:
-        """Return (ball_detection, hoop_detection). Either may be None."""
+    ) -> Tuple[Optional[Detection], Optional[Detection], Optional[Detection]]:
+        """Return (ball, hoop, ball_in_basket). Any may be None."""
         self._frame_count += 1
-        ball = self._detect_ball(frame, ball_conf_override)
-        hoop = self._get_hoop(frame)
-        return ball, hoop
+
+        # Run model once per frame at the lowest required confidence
+        results = None
+        if self._model is not None:
+            min_conf = min(
+                ball_conf_override or config.BALL_CONF_NORMAL,
+                config.HOOP_CONF,
+                config.BALL_IN_BASKET_CONF,
+            )
+            results = self._model(frame, verbose=False, conf=min_conf)[0]
+
+        ball           = self._clean_ball(self._detect_ball(results, ball_conf_override))
+        hoop           = self._get_hoop(frame, results)
+        ball_in_basket = self._detect_ball_in_basket(results)
+        return ball, hoop, ball_in_basket
 
     # ── ball detection ────────────────────────────────────────────────────────
 
     def _detect_ball(
         self,
-        frame: np.ndarray,
+        results,
         conf_override: Optional[float],
     ) -> Optional[Detection]:
-        if self._model is None:
+        if results is None:
+            return None
+        conf = conf_override or config.BALL_CONF_NORMAL
+        if self._model_type == "custom":
+            return self._best_from_results(results, config.CUSTOM_BALL_NAMES, conf)
+        return self._best_by_class_id(results, config.COCO_BALL_CLASS, conf)
+
+    def _detect_ball_in_basket(self, results) -> Optional[Detection]:
+        if results is None or self._model_type != "custom":
+            return None
+        return self._best_from_results(
+            results, config.CUSTOM_BALL_IN_BASKET_NAMES, config.BALL_IN_BASKET_CONF
+        )
+
+    def _clean_ball(self, det: Optional[Detection]) -> Optional[Detection]:
+        """Reject detections that are implausibly shaped or moving too fast."""
+        if det is None:
+            self._ball_history.append(None)
+            if len(self._ball_history) > 30:
+                self._ball_history.pop(0)
             return None
 
-        conf = conf_override or config.BALL_CONF_NORMAL
-        results = self._model(frame, verbose=False, conf=conf)[0]
+        # Reject non-round detections (ball should be roughly square bbox)
+        aspect = det.w / max(det.h, 1)
+        if aspect > 1.4 or aspect < 0.6:
+            return None
 
-        best: Optional[Detection] = None
+        # Reject if ball moved more than 4x its diameter in the last 5 frames
+        recent = [h for h in self._ball_history[-5:] if h is not None]
+        if recent:
+            diameter = (det.w + det.h) / 2
+            last = recent[-1]
+            dist = ((det.cx - last.cx)**2 + (det.cy - last.cy)**2) ** 0.5
+            if dist > 4 * diameter:
+                return None
 
-        if self._model_type == "custom":
-            best = self._best_from_results(results, config.CUSTOM_BALL_NAMES, conf)
-        else:
-            best = self._best_by_class_id(results, config.COCO_BALL_CLASS, conf)
-
-        return best
+        self._ball_history.append(det)
+        if len(self._ball_history) > 30:
+            self._ball_history.pop(0)
+        return det
 
     # ── hoop detection ────────────────────────────────────────────────────────
 
-    def _get_hoop(self, frame: np.ndarray) -> Optional[Detection]:
+    def _get_hoop(self, frame: np.ndarray, results=None) -> Optional[Detection]:
         """Return cached hoop or re-detect if stale."""
         if self._frame_count % config.HOOP_POLL_FRAMES != 0:
             return self._hoop_cache
 
-        fresh = self._detect_hoop(frame)
+        fresh = self._detect_hoop(frame, results)
         if fresh is not None:
-            # If we have a stable cache, reject detections that jump too far
             if self._hoop_cache is not None and self._hoop_stable_count > 5:
                 dx = abs(fresh.cx - self._hoop_cache.cx)
                 dy = abs(fresh.cy - self._hoop_cache.cy)
                 if dx > 120 or dy > 120:
-                    fresh = None  # reject — likely a false positive
+                    fresh = None
 
         if fresh is not None:
             self._hoop_cache = fresh
@@ -132,20 +172,17 @@ class BallHoopDetector:
 
         return self._hoop_cache
 
-    def _detect_hoop(self, frame: np.ndarray) -> Optional[Detection]:
+    def _detect_hoop(self, frame: np.ndarray, results=None) -> Optional[Detection]:
         """Try YOLO first, fall back to colour segmentation."""
-        det = self._detect_hoop_yolo(frame)
+        det = self._detect_hoop_yolo(results)
         if det is not None:
             return det
         return self._detect_hoop_color(frame)
 
-    def _detect_hoop_yolo(self, frame: np.ndarray) -> Optional[Detection]:
-        if self._model is None:
+    def _detect_hoop_yolo(self, results) -> Optional[Detection]:
+        if results is None or self._model_type != "custom":
             return None
-        results = self._model(frame, verbose=False, conf=config.HOOP_CONF)[0]
-        if self._model_type == "custom":
-            return self._best_from_results(results, config.CUSTOM_HOOP_NAMES, config.HOOP_CONF)
-        return None   # COCO has no hoop class
+        return self._best_from_results(results, config.CUSTOM_HOOP_NAMES, config.HOOP_CONF)
 
     def _detect_hoop_color(self, frame: np.ndarray) -> Optional[Detection]:
         """Colour + shape fallback for the orange steel rim."""

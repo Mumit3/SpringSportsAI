@@ -11,7 +11,6 @@ If you already exported a .pt file from Roboflow, just copy it to
 models/basketball.pt and skip this script.
 """
 import argparse
-import os
 import shutil
 import sys
 from pathlib import Path
@@ -21,9 +20,9 @@ MODELS_DIR  = Path(__file__).parent / "models"
 OUTPUT_PATH = MODELS_DIR / "basketball.pt"
 
 # Roboflow project details
-WORKSPACE   = "roboflow-jvuqo"          # public workspace on Universe
-PROJECT     = "basketball-and-hoop-7xk0h"
-VERSION     = 1
+WORKSPACE   = "roboflow-jvuqo"
+PROJECT     = "basketball-player-detection-3-ycjdo"
+VERSION     = 4
 FORMAT      = "yolov8"
 
 
