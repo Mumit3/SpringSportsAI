@@ -50,6 +50,15 @@ def process_svo(
 
     _cb(0.0, "Opening SVO file…")
 
+    # ── version numbering ─────────────────────────────────────────────────────
+    existing = list(out_dir.glob("annotated_v*.mp4"))
+    versions = [
+        int(m.group(1))
+        for f in existing
+        if (m := re.search(r'v(\d+)', f.name))
+    ]
+    run_version = max(versions) + 1 if versions else 1
+
     # ── initialise components ─────────────────────────────────────────────────
     reader   = SVOReader(str(svo_path))
     detector = BallHoopDetector()
@@ -61,15 +70,6 @@ def process_svo(
     )
     analytics = Analytics(svo_filename=svo_path.name, fps=reader.info.fps)
     annotator = Annotator(frame_width=reader.info.width, frame_height=reader.info.height, version=run_version)
-
-    # ── version numbering ─────────────────────────────────────────────────────
-    existing = list(out_dir.glob("annotated_v*.mp4"))
-    versions = [
-        int(m.group(1))
-        for f in existing
-        if (m := re.search(r'v(\d+)', f.name))
-    ]
-    run_version = max(versions) + 1 if versions else 1
 
     # ── video writer ──────────────────────────────────────────────────────────
     video_path = out_dir / f"annotated_v{run_version}.mp4"

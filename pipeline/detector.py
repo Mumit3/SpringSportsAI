@@ -63,16 +63,17 @@ class BallHoopDetector:
         # Try Roboflow inference SDK first (downloads + caches model on first run)
         if config.USE_ROBOFLOW_API:
             try:
-                from inference import get_model
-                self._model      = get_model(
-                    model_id = config.ROBOFLOW_MODEL_ID,
-                    api_key  = config.ROBOFLOW_API_KEY,
+                from inference_sdk import InferenceHTTPClient
+                self._model = InferenceHTTPClient(
+                    api_url = "https://detect.roboflow.com",
+                    api_key = config.ROBOFLOW_API_KEY,
                 )
-                self._model_type = "roboflow_api"
+                self._rf_model_id = config.ROBOFLOW_MODEL_ID
+                self._model_type  = "roboflow_api"
                 print(f"[Detector] Roboflow API model loaded: {config.ROBOFLOW_MODEL_ID}")
                 return
             except ImportError:
-                print("[Detector] inference SDK not installed — run: pip3 install inference")
+                print("[Detector] inference-sdk not installed — run: pip3 install inference-sdk")
             except Exception as e:
                 print(f"[Detector] Roboflow API unavailable ({e}). Falling back to local model.")
 
@@ -143,7 +144,10 @@ class BallHoopDetector:
             config.BALL_IN_BASKET_CONF,
         )
         try:
-            result = self._model.infer(frame, confidence=min_conf)[0]
+            result = self._model.infer(frame, model_id=self._rf_model_id,
+                                       confidence=min_conf)
+            if isinstance(result, list):
+                result = result[0]
         except Exception:
             return []
 
