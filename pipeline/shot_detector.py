@@ -89,6 +89,10 @@ class ShotDetector:
         # For computing arc height
         self._apex_y3d: float = -1e9
 
+        # Velocity-sign make/miss state — reset per shot
+        self._cylinder_entry_frame: int = -1
+        self._cylinder_entry_vy:    float = 0.0
+
         self.completed_shots: List[ShotEvent] = []
 
     # ── public ────────────────────────────────────────────────────────────────
@@ -149,6 +153,8 @@ class ShotDetector:
         self._arc_frames   = 0
         self._apex_y3d     = tracker.position_3d[1] if tracker.position_3d is not None else 0.0
         self._state        = _ArcState.FLIGHT
+        self._cylinder_entry_frame = -1
+        self._cylinder_entry_vy    = 0.0
 
         dist = 0.0
         if tracker.position_3d is not None and hoop_3d is not None:
@@ -204,15 +210,23 @@ class ShotDetector:
         if outcome != Outcome.PENDING:
             return self._finalise(outcome, frame_idx)
 
-        # Terminate arc when ball starts descending or max frames reached
-        ball_descending = (
-            tracker.velocity_3d is not None
+        # Terminate arc only if the ball has clearly passed the hoop or timed out
+        ball_below_hoop = (
+            tracker.position_3d is not None
+            and hoop_3d is not None
+            and float(tracker.position_3d[1]) < float(hoop_3d[1]) - 0.5
+        )
+        # Fallback: if no hoop info, fall back to descent + min frames
+        ball_falling_no_hoop = (
+            hoop_3d is None
+            and tracker.velocity_3d is not None
             and float(tracker.velocity_3d[1]) < -0.5
-            and self._arc_frames > config.ARC_MIN_FRAMES
+            and self._arc_frames > config.ARC_MIN_FRAMES * 2
         )
         arc_timeout = self._arc_frames >= config.ARC_MAX_FRAMES
 
-        if (ball_descending or arc_timeout) and self._arc_frames >= config.ARC_MIN_FRAMES:
+        if ((ball_below_hoop or ball_falling_no_hoop or arc_timeout)
+                and self._arc_frames >= config.ARC_MIN_FRAMES):
             return self._finalise(Outcome.MISS, frame_idx)
 
         return None
@@ -245,26 +259,59 @@ class ShotDetector:
         ball_vel: Optional[np.ndarray],
         hoop_3d:  np.ndarray,
     ) -> Outcome:
-        """Ball must cross hoop plane (Y == hoop Y) within cylinder of radius R."""
-        # Only classify when ball is descending through hoop height
-        if ball_vel is not None and float(ball_vel[1]) > 0.1:
-            return Outcome.PENDING   # still rising
+        """Velocity-sign make/miss classification.
 
-        hoop_y  = float(hoop_3d[1])
-        ball_y  = float(ball_pos[1])
+        A MAKE requires the ball to (1) enter the cylinder while descending,
+        and (2) continue descending out the bottom. Any upward Vy reversal
+        after entry is a rim-out → MISS.
+        """
+        hoop_y = float(hoop_3d[1])
+        ball_y = float(ball_pos[1])
 
-        if ball_y > hoop_y + 0.1:
-            return Outcome.PENDING   # ball hasn't reached hoop height yet
-
-        # Check horizontal distance from hoop centre
         dx = float(ball_pos[0]) - float(hoop_3d[0])
         dz = float(ball_pos[2]) - float(hoop_3d[2])
-        horiz_dist = np.sqrt(dx**2 + dz**2)
+        horiz_dist = float(np.sqrt(dx*dx + dz*dz))
+        in_cylinder = horiz_dist <= config.MAKE_CYLINDER_RADIUS
+        descending  = ball_vel is not None and float(ball_vel[1]) < 0.1
 
-        if horiz_dist <= config.MAKE_CYLINDER_RADIUS:
-            return Outcome.MAKE
-        elif ball_y < hoop_y - 0.5:
-            # Ball passed well below the hoop — miss
+        # Hasn't reached the hoop area yet
+        if ball_y > hoop_y + 0.15:
+            return Outcome.PENDING
+
+        # First time entering cylinder while descending → mark entry
+        if (in_cylinder
+            and self._cylinder_entry_frame < 0
+            and descending
+            and ball_y < hoop_y + 0.15):
+            self._cylinder_entry_frame = self._arc_frames
+            self._cylinder_entry_vy    = float(ball_vel[1]) if ball_vel is not None else 0.0
+
+        # After entry, watch what happens
+        if self._cylinder_entry_frame >= 0:
+            frames_since_entry = self._arc_frames - self._cylinder_entry_frame
+
+            # Rim bounce: Vy reverses upward after a descending entry
+            if (ball_vel is not None
+                and float(ball_vel[1]) > 0.5
+                and frames_since_entry >= 1):
+                return Outcome.MISS
+
+            # Slipped sideways out of cylinder while still at hoop height
+            if (not in_cylinder
+                and frames_since_entry >= 2
+                and ball_y > hoop_y - 0.3):
+                return Outcome.MISS
+
+            # Cleared through the bottom of the hoop
+            if ball_y < hoop_y - 0.4:
+                return Outcome.MAKE
+
+            # Held inside cylinder for several descending frames → MAKE
+            if frames_since_entry >= 6 and in_cylinder and descending:
+                return Outcome.MAKE
+
+        # Never entered cylinder, but ball passed well below hoop → MISS
+        if ball_y < hoop_y - 0.4 and self._cylinder_entry_frame < 0:
             return Outcome.MISS
 
         return Outcome.PENDING
@@ -300,6 +347,8 @@ class ShotDetector:
         self._current.outcome_frame = frame_idx
         self._state                 = _ArcState.IDLE
         self._cooldown              = config.SHOT_COOLDOWN_FRAMES
+        self._cylinder_entry_frame  = -1
+        self._cylinder_entry_vy     = 0.0
         shot = self._current
         self._current = None
         self.completed_shots.append(shot)

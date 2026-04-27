@@ -72,6 +72,7 @@ def process_svo(
 
     total     = reader.info.total_frames
     hoop_3d:  Optional[np.ndarray] = None
+    hoop_3d_locked = False
     hoop_ema_alpha = 0.15           # smooth hoop position over time
 
     _cb(0.02, f"Processing {total} frames at {reader.info.fps:.0f} fps…")
@@ -93,14 +94,20 @@ def process_svo(
                 # ── detect ────────────────────────────────────────────────────────
                 ball_det, hoop_det = detector.detect(frame.image, ball_conf)
 
-                # ── update 3-D hoop position (cached + EMA-smoothed) ──────────────
-                if hoop_det is not None:
+                # ── update 3-D hoop position (EMA until locked) ───────────────
+                if hoop_det is not None and not hoop_3d_locked:
                     new_h3d = reader.pixel_to_3d(frame.point_cloud, hoop_det.cx, hoop_det.cy)
                     if new_h3d is not None and config.HOOP_DEPTH_MIN < new_h3d[2] < config.HOOP_DEPTH_MAX:
                         if hoop_3d is None:
                             hoop_3d = new_h3d.copy()
                         else:
                             hoop_3d = (1 - hoop_ema_alpha) * hoop_3d + hoop_ema_alpha * new_h3d
+
+                    # When the 2-D bbox is locked, also lock the 3-D position
+                    if hoop_det.source == "locked" and hoop_3d is not None:
+                        hoop_3d_locked = True
+                        print(f"[Hoop] 3D position locked at "
+                              f"X={hoop_3d[0]:.2f} Y={hoop_3d[1]:.2f} Z={hoop_3d[2]:.2f}")
 
                 # ── track ball ────────────────────────────────────────────────────
                 tracker_result = tracker.update(frame.image, frame.point_cloud, ball_det, hoop_det)

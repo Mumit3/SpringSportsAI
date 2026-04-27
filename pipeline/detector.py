@@ -183,7 +183,11 @@ class BallHoopDetector:
         y1 = int(sum(d.y1 for d in best) / len(best))
         x2 = int(sum(d.x2 for d in best) / len(best))
         y2 = int(sum(d.y2 for d in best) / len(best))
-        return Detection(x1, y1, x2, y2, 0.95, "hoop", "locked")
+
+        # Expand bbox downward to include net area (HSV usually only catches rim arc)
+        rim_height = max(1, y2 - y1)
+        y2_expanded = y2 + int(rim_height * 1.2)
+        return Detection(x1, y1, x2, y2_expanded, 0.95, "hoop", "locked")
 
     def _detect_hoop(self, frame: np.ndarray) -> Optional[Detection]:
         """Try YOLO first, fall back to colour segmentation."""

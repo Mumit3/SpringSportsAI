@@ -145,6 +145,83 @@ class BallTracker:
         hi = 1.0 + config.BALL_SIZE_TOLERANCE
         return lo <= ratio <= hi
 
+    def _hough_recover(
+        self,
+        gray: np.ndarray,
+        pc:   np.ndarray,
+    ) -> Optional[Tuple[Tuple[int,int], np.ndarray]]:
+        """Search for the ball as a circle in a region around Kalman's prediction.
+
+        Uses depth to size the search radius. Returns ((u, v), [X,Y,Z]) or None.
+        """
+        if not self._kf.initialized:
+            return None
+
+        pred_3d = self._kf.peek_predict()
+        depth = float(pred_3d[2])
+        if depth <= 0.5:
+            return None
+
+        pred_2d = self._reader.project_3d_to_2d(pred_3d)
+        if pred_2d is None:
+            return None
+
+        pu, pv = pred_2d
+        fx = self._reader.info.fx
+        expected_r = fx * config.BALL_DIAMETER_M / 2.0 / depth
+        if expected_r < 4 or expected_r > 60:
+            return None
+
+        roi_half = int(expected_r * config.HOUGH_ROI_FACTOR)
+        h, w = gray.shape
+        x1 = max(0, pu - roi_half)
+        y1 = max(0, pv - roi_half)
+        x2 = min(w, pu + roi_half)
+        y2 = min(h, pv + roi_half)
+        if x2 - x1 < 30 or y2 - y1 < 30:
+            return None
+
+        roi = cv2.GaussianBlur(gray[y1:y2, x1:x2], (5, 5), 1.0)
+
+        min_r = max(3, int(expected_r * config.HOUGH_RADIUS_MIN_FRAC))
+        max_r = max(min_r + 2, int(expected_r * config.HOUGH_RADIUS_MAX_FRAC))
+
+        circles = cv2.HoughCircles(
+            roi,
+            cv2.HOUGH_GRADIENT,
+            dp=1,
+            minDist=int(max(expected_r * 1.5, 10)),
+            param1=80,
+            param2=config.HOUGH_ACCUMULATOR_THR,
+            minRadius=min_r,
+            maxRadius=max_r,
+        )
+        if circles is None or len(circles[0]) == 0:
+            return None
+
+        # Pick circle closest to prediction
+        best = None
+        best_dist = float("inf")
+        for cx_l, cy_l, _r in circles[0]:
+            u = int(x1 + cx_l)
+            v = int(y1 + cy_l)
+            d = ((u - pu) ** 2 + (v - pv) ** 2) ** 0.5
+            if d < best_dist:
+                best_dist = d
+                best = (u, v)
+
+        if best is None:
+            return None
+
+        u, v = best
+        p3d = self._reader.pixel_to_3d(pc, u, v)
+        if p3d is None:
+            return None
+        # Final sanity: depth should be close to prediction
+        if abs(float(p3d[2]) - depth) > config.OF_DEPTH_TOLERANCE_M:
+            return None
+        return ((u, v), p3d)
+
     # ── internal ──────────────────────────────────────────────────────────────
 
     def _compute(
@@ -173,11 +250,10 @@ class BallTracker:
                     self._kf.predict()
                     self._kf.update(pos3d)
 
-        # ── Layer 2: Optical Flow ─────────────────────────────────────────────
+        # ── Layer 2: Optical Flow (depth-validated) ───────────────────────────
         if pos3d is None and self._missed < config.OF_MAX_MISSED_FRAMES:
             of_2d = self._of.track(gray)
-            # Reject OF result if it landed on the hoop and ball is not near hoop
-            # (allow overlap when ball is legitimately approaching the rim)
+            # Reject OF result if it landed on the hoop and ball isn't near hoop
             if of_2d is not None and hoop_det is not None and self._missed > 3:
                 u_of, v_of = of_2d
                 hx1, hy1, hx2, hy2 = hoop_det.bbox
@@ -188,28 +264,42 @@ class BallTracker:
             if of_2d is not None:
                 u, v   = of_2d
                 p3d    = self._reader.pixel_to_3d(pc, u, v)
+                # Depth validation against Kalman prediction
+                if p3d is not None and self._kf.initialized:
+                    pred_z = float(self._kf.peek_predict()[2])
+                    if abs(float(p3d[2]) - pred_z) > config.OF_DEPTH_TOLERANCE_M:
+                        p3d = None   # OF drifted to wrong depth — reject
+                        self._of.reset()
                 if p3d is not None:
                     pos3d  = p3d
                     source = "optical_flow"
-                    # Kalman update with higher measurement noise
                     if self._kf.initialized:
                         self._kf.predict()
                         self._kf.update(pos3d, noise_scale=3.0)
-                else:
-                    # OF gave 2D but no valid depth — still use KF predict
-                    if self._kf.initialized:
-                        pos3d  = self._kf.predict()
-                        source = "kalman"
                 self._missed += 1
             else:
                 self._missed += 1
+
+        # ── Layer 2.5: Hough Circle recovery in Kalman ROI ────────────────────
+        if pos3d is None and self._kf.initialized:
+            recovered = self._hough_recover(gray, pc)
+            if recovered is not None:
+                (u, v), p3d = recovered
+                pos3d  = p3d
+                source = "hough"
+                # Re-seed optical flow at the recovered position
+                r_seed = 18
+                self._of.init(gray, (u-r_seed, v-r_seed, u+r_seed, v+r_seed))
+                # Kalman update with elevated noise (less trust than YOLO)
+                self._kf.predict()
+                self._kf.update(pos3d, noise_scale=2.0)
 
         # ── Layer 3: Kalman predict-only ──────────────────────────────────────
         if pos3d is None:
             if self._kf.initialized and self._missed < config.KF_MAX_MISSED_FRAMES:
                 pos3d  = self._kf.predict()
                 source = "kalman"
-                self._of.update_gray(gray)   # keep OF gray fresh without tracking
+                self._of.update_gray(gray)
             else:
                 self._kf.reset()
                 self._of.reset()
@@ -222,7 +312,7 @@ class BallTracker:
         # In-flight: upward velocity > 0.5 m/s or fresh detection within last 10 frames
         if vel3d is not None:
             vy = float(vel3d[1])
-            self._in_flight = vy > 0.3 or (source in ("yolo", "optical_flow") and self._missed < 10)
+            self._in_flight = vy > 0.3 or (source in ("yolo", "optical_flow", "hough") and self._missed < 10)
         else:
             self._in_flight = False
 
@@ -248,7 +338,13 @@ class BallTracker:
                 else:
                     break   # stop at first out-of-frame point
 
-        conf_map = {"yolo": 1.0, "optical_flow": 0.72, "kalman": 0.45, "none": 0.0}
+        conf_map = {
+            "yolo":         1.0,
+            "optical_flow": 0.72,
+            "hough":        0.65,
+            "kalman":       0.45,
+            "none":         0.0,
+        }
 
         return TrackerResult(
             position_3d      = pos3d,

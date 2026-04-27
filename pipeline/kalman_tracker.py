@@ -71,6 +71,24 @@ class KalmanFilter3D:
         self.P = self.F @ self.P @ self.F.T + self.Q
         return self.x[:3].copy()
 
+    def peek_predict(self, dt: Optional[float] = None) -> np.ndarray:
+        """Return what predict() WOULD return, without modifying state."""
+        if not self.initialized:
+            return self.x[:3].copy()
+
+        use_dt = dt if dt is not None else self.dt
+        if use_dt == self.dt:
+            F = self.F
+        else:
+            F = np.eye(6)
+            F[0, 3] = use_dt
+            F[1, 4] = use_dt
+            F[2, 5] = use_dt
+
+        x_next = F @ self.x
+        x_next[4] -= self.g * use_dt
+        return x_next[:3].copy()
+
     def update(self, measurement: np.ndarray, noise_scale: float = 1.0) -> np.ndarray:
         """Correct with a 3-D measurement. Returns corrected position."""
         if not self.initialized:

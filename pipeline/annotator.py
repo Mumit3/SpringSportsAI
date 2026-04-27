@@ -90,6 +90,7 @@ class Annotator:
         source_colors = {
             "yolo":         config.COLOR_BALL_YOLO,
             "optical_flow": config.COLOR_BALL_OF,
+            "hough":        config.COLOR_BALL_HOUGH,
             "kalman":       config.COLOR_BALL_KALMAN,
             "none":         (100, 100, 100),
         }

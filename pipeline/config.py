@@ -50,6 +50,15 @@ KF_MAX_MISSED_FRAMES  = 60   # keep Kalman-only estimate up to this limit
 BALL_DIAMETER_M       = 0.24   # regulation basketball
 BALL_SIZE_TOLERANCE   = 0.5    # accept ±50 % of expected pixel size at given depth
 
+# Hough Circle recovery — search for ball as a circle in Kalman-predicted ROI
+HOUGH_ROI_FACTOR      = 5.0    # ROI half-size = factor × expected radius
+HOUGH_RADIUS_MIN_FRAC = 0.7    # search radii from 0.7× to 1.4× expected
+HOUGH_RADIUS_MAX_FRAC = 1.4
+HOUGH_ACCUMULATOR_THR = 20     # cv2.HoughCircles param2
+
+# Depth-validated optical flow — reject OF if measured depth differs from prediction
+OF_DEPTH_TOLERANCE_M  = 1.2    # metres
+
 # ── Shot detector ─────────────────────────────────────────────────────────────
 ARC_VELOCITY_THRESHOLD = 1.0   # m/s upward Kalman velocity → shot triggered
 ARC_MIN_FRAMES         = 8     # arc must last ≥ this many frames to be valid
@@ -75,6 +84,7 @@ HOOP_DEPTH_MAX  = 14.0   # metres
 # ── Annotation colours (BGR) ──────────────────────────────────────────────────
 COLOR_BALL_YOLO    = (0,   165, 255)   # orange
 COLOR_BALL_OF      = (0,   215, 255)   # gold
+COLOR_BALL_HOUGH   = (255, 200,   0)   # bright cyan
 COLOR_BALL_KALMAN  = (255, 255,   0)   # cyan
 COLOR_HOOP         = (0,   165, 255)   # orange
 COLOR_TRAIL_HEAD   = (255, 255, 255)   # white
