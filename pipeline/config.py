@@ -21,7 +21,11 @@ DEPTH_MAX   = 20.0       # metres
 BALL_CONF_NORMAL = 0.35
 BALL_CONF_FLIGHT = 0.18   # lowered while ball is confirmed in-flight
 HOOP_CONF        = 0.25
-HOOP_POLL_FRAMES = 5      # re-run hoop detector every N frames
+HOOP_POLL_FRAMES = 5      # re-run hoop detector every N frames (post-calibration)
+
+# Hoop calibration: detect every frame for first N frames, cluster, then LOCK
+HOOP_CALIBRATION_FRAMES = 60
+HOOP_CLUSTER_TOLERANCE_PX = 30   # detections within this distance count as same hoop
 
 # COCO class indices (used when falling back to yolov8n.pt)
 COCO_BALL_CLASS = 32      # "sports ball"

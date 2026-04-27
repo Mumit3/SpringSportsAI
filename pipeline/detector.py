@@ -48,9 +48,11 @@ class BallHoopDetector:
         self._model_type  = None   # 'custom' | 'coco'
         self._frame_count = 0
 
-        # Cached hoop state
+        # Hoop state
         self._hoop_cache: Optional[Detection] = None
         self._hoop_stable_count = 0
+        self._hoop_locked: Optional[Detection] = None
+        self._hoop_candidates: list = []
 
         self._load_model()
 
@@ -111,18 +113,39 @@ class BallHoopDetector:
     # ── hoop detection ────────────────────────────────────────────────────────
 
     def _get_hoop(self, frame: np.ndarray) -> Optional[Detection]:
-        """Return cached hoop or re-detect if stale."""
+        """Return locked hoop, or run calibration / fallback detection."""
+        # Once locked, the hoop is fixed for the rest of the video
+        if self._hoop_locked is not None:
+            return self._hoop_locked
+
+        # ── Calibration phase: detect every frame for first N frames ──────────
+        if self._frame_count <= config.HOOP_CALIBRATION_FRAMES:
+            fresh = self._detect_hoop(frame)
+            if fresh is not None:
+                self._hoop_candidates.append(fresh)
+                self._hoop_cache = fresh
+
+            if self._frame_count == config.HOOP_CALIBRATION_FRAMES:
+                self._hoop_locked = self._cluster_and_lock_hoop()
+                if self._hoop_locked is not None:
+                    print(f"[Hoop] Locked at ({self._hoop_locked.cx},{self._hoop_locked.cy}) "
+                          f"from {len(self._hoop_candidates)} candidates")
+                else:
+                    print("[Hoop] Calibration failed — using fallback per-frame detection")
+
+            return self._hoop_cache
+
+        # ── Post-calibration fallback (lock failed) ───────────────────────────
         if self._frame_count % config.HOOP_POLL_FRAMES != 0:
             return self._hoop_cache
 
         fresh = self._detect_hoop(frame)
         if fresh is not None:
-            # If we have a stable cache, reject detections that jump too far
             if self._hoop_cache is not None and self._hoop_stable_count > 5:
                 dx = abs(fresh.cx - self._hoop_cache.cx)
                 dy = abs(fresh.cy - self._hoop_cache.cy)
                 if dx > 120 or dy > 120:
-                    fresh = None  # reject — likely a false positive
+                    fresh = None
 
         if fresh is not None:
             self._hoop_cache = fresh
@@ -131,6 +154,36 @@ class BallHoopDetector:
             self._hoop_stable_count = max(0, self._hoop_stable_count - 1)
 
         return self._hoop_cache
+
+    def _cluster_and_lock_hoop(self) -> Optional[Detection]:
+        """Cluster calibration detections by position and return the dominant one."""
+        if len(self._hoop_candidates) < 5:
+            return None
+
+        tol = config.HOOP_CLUSTER_TOLERANCE_PX
+        clusters: list = []
+        for det in self._hoop_candidates:
+            placed = False
+            for cluster in clusters:
+                cx_avg = sum(d.cx for d in cluster) / len(cluster)
+                cy_avg = sum(d.cy for d in cluster) / len(cluster)
+                if abs(det.cx - cx_avg) < tol and abs(det.cy - cy_avg) < tol:
+                    cluster.append(det)
+                    placed = True
+                    break
+            if not placed:
+                clusters.append([det])
+
+        clusters.sort(key=len, reverse=True)
+        best = clusters[0]
+        if len(best) < 3:
+            return None   # dominant cluster too small to trust
+
+        x1 = int(sum(d.x1 for d in best) / len(best))
+        y1 = int(sum(d.y1 for d in best) / len(best))
+        x2 = int(sum(d.x2 for d in best) / len(best))
+        y2 = int(sum(d.y2 for d in best) / len(best))
+        return Detection(x1, y1, x2, y2, 0.95, "hoop", "locked")
 
     def _detect_hoop(self, frame: np.ndarray) -> Optional[Detection]:
         """Try YOLO first, fall back to colour segmentation."""
