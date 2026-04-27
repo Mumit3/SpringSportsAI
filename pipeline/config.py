@@ -17,6 +17,15 @@ COORD_SYSTEM = "LEFT_HANDED_Y_UP"
 DEPTH_MIN   = 0.3        # metres
 DEPTH_MAX   = 20.0       # metres
 
+# ── Live recording (Flask UI) ────────────────────────────────────────────────
+EXPERIMENT_MODE          = True   # outputs go under outputs/experiment/<stem>/<label>
+RECORD_RESOLUTION        = "HD2K"
+RECORD_FPS               = 15     # HD2K caps at 15 fps
+RECORDING_MAX_SECONDS    = 60
+LIVE_SVO_FILENAME        = "_live_capture.svo2"
+PREVIEW_MAX_WIDTH        = 800    # downscale MJPEG preview for bandwidth
+PREVIEW_JPEG_QUALITY     = 70
+
 # ── Detection thresholds ─────────────────────────────────────────────────────
 BALL_CONF_NORMAL = 0.35
 BALL_CONF_FLIGHT = 0.18   # lowered while ball is confirmed in-flight

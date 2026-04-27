@@ -1,7 +1,19 @@
 /* main.js — index page interactions */
 
 document.addEventListener('DOMContentLoaded', () => {
-  const fileBtns     = document.querySelectorAll('.file-btn');
+  // ── mode picker ──────────────────────────────────────────────
+  const modeExisting   = document.getElementById('mode-existing');
+  const existingPanel  = document.getElementById('existing-panel');
+  if (modeExisting && existingPanel) {
+    modeExisting.addEventListener('click', () => {
+      existingPanel.classList.remove('hidden');
+      existingPanel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  }
+
+  // ── existing-SVO processing ──────────────────────────────────
+  const fileBtns      = document.querySelectorAll('.file-btn');
+  const labelInput    = document.getElementById('label-input');
   const progressPanel = document.getElementById('progress-panel');
   const progressBar   = document.getElementById('progress-bar');
   const progressMsg   = document.getElementById('progress-msg');
@@ -13,80 +25,58 @@ document.addEventListener('DOMContentLoaded', () => {
 
   fileBtns.forEach(btn => {
     btn.addEventListener('click', () => {
-      // Highlight selected button
       fileBtns.forEach(b => b.classList.remove('selected'));
       btn.classList.add('selected');
-
       const filename = btn.dataset.filename;
-      startProcessing(filename);
+      const label    = (labelInput && labelInput.value.trim()) || null;
+      startProcessing(filename, label);
     });
   });
 
-  function startProcessing(filename) {
-    // Show progress panel
-    progressPanel.classList.remove('hidden');
+  function startProcessing(filename, label) {
+    if (progressPanel) progressPanel.classList.remove('hidden');
     setProgress(0, `Starting ${filename}…`);
 
-    // Close any existing SSE connection
-    if (activeEventSource) {
-      activeEventSource.close();
-    }
+    if (activeEventSource) activeEventSource.close();
 
     fetch('/api/process', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ filename }),
+      body: JSON.stringify({ filename, label }),
     })
     .then(r => r.json())
     .then(data => {
-      if (data.status === 'error') {
+      if (data.error) {
         setProgress(0, `Error: ${data.error}`);
         return;
       }
-      const jobId = data.job_id;
-      listenForProgress(jobId);
+      listenForProgress(data.job_id);
     })
-    .catch(err => {
-      setProgress(0, `Network error: ${err}`);
-    });
+    .catch(err => setProgress(0, `Network error: ${err}`));
   }
 
   function listenForProgress(jobId) {
     activeEventSource = new EventSource(`/api/status/${jobId}`);
-
     activeEventSource.onmessage = (event) => {
       try {
         const msg = JSON.parse(event.data);
-
         if (msg.heartbeat) return;
-
         const pct = Math.round((msg.progress || 0) * 100);
         setProgress(pct, msg.message || '');
-
         if (msg.status === 'done') {
           activeEventSource.close();
-          setProgress(100, 'Processing complete — redirecting…');
-          setTimeout(() => {
-            window.location.href = `/results/${jobId}`;
-          }, 800);
+          setProgress(100, 'Done — redirecting…');
+          setTimeout(() => { window.location.href = `/results/${jobId}`; }, 600);
         } else if (msg.status === 'error') {
           activeEventSource.close();
           setProgress(0, `Error: ${msg.message}`);
         }
-      } catch (e) {
-        // Ignore parse errors on heartbeat
-      }
+      } catch (e) { /* ignore parse errors */ }
     };
-
     activeEventSource.onerror = () => {
-      // SSE connection dropped — check if job finished
-      fetch(`/api/results/${jobId}`)
-        .then(r => {
-          if (r.ok) {
-            window.location.href = `/results/${jobId}`;
-          }
-        })
-        .catch(() => {});
+      fetch(`/api/results/${jobId}`).then(r => {
+        if (r.ok) window.location.href = `/results/${jobId}`;
+      }).catch(() => {});
     };
   }
 

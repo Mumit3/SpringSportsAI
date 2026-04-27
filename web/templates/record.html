@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% block title %}Record Session — Basketball Analytics{% endblock %}
+
+{% block content %}
+<div class="page-record">
+
+  <section class="card">
+    <h2 class="card-title">Live Recording <span class="card-subtitle">HD2K @ 15 fps</span></h2>
+
+    <div class="preview-container" id="preview-container">
+      <img id="preview-img" alt="Connecting to ZED…"/>
+      <div id="preview-overlay" class="preview-overlay">Connecting to ZED…</div>
+    </div>
+
+    <div class="label-row">
+      <label for="label-input">Session label:</label>
+      <input id="label-input" type="text" maxlength="40"
+             placeholder="e.g. free_throws_april27"/>
+    </div>
+
+    <div class="record-controls">
+      <button id="btn-record" class="btn-record" disabled>
+        <span class="rec-dot"></span> Start Recording
+      </button>
+      <button id="btn-stop" class="btn-stop hidden">
+        ■ Stop &amp; Process
+      </button>
+    </div>
+
+    <div id="rec-timer" class="rec-timer hidden">
+      <span id="rec-time">0:00</span>
+      <span class="rec-divider">/</span>
+      <span id="rec-max">1:00</span>
+      <div class="rec-bar"><div id="rec-bar-fill"></div></div>
+    </div>
+
+    <div id="status-msg" class="status-msg"></div>
+
+    <div id="progress-panel" class="progress-panel hidden">
+      <div class="progress-info">
+        <span id="progress-msg">Processing…</span>
+        <span id="progress-pct">0%</span>
+      </div>
+      <div class="progress-bar-track">
+        <div id="progress-bar" class="progress-bar-fill" style="width:0%"></div>
+      </div>
+    </div>
+  </section>
+
+  <p class="back-link"><a href="/">← Back to home</a></p>
+
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/record.js') }}"></script>
+{% endblock %}

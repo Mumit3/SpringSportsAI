@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import time
 from pathlib import Path
 from typing import Callable, Optional
@@ -25,22 +26,46 @@ from pipeline import (
 from pipeline import config
 
 
+def _sanitize_label(label: str) -> str:
+    """Make a user-supplied label safe for filesystem and URL use."""
+    label = label.strip().lower()
+    label = re.sub(r"[^a-z0-9_\-]+", "_", label)
+    label = re.sub(r"_+", "_", label)   # collapse multi-underscores (delimiter is __)
+    label = label.strip("_")
+    return label or "untitled"
+
+
 def process_svo(
     svo_path: str,
     progress_cb: Optional[Callable[[float, str], None]] = None,
+    label:       Optional[str] = None,
 ) -> dict:
     """Run the full pipeline on an SVO file.
 
     Args:
         svo_path:    Path to the .svo file.
         progress_cb: Optional callback(fraction_done, status_message).
+        label:       Optional human label for this run. Used in the output
+                     folder name so multiple runs of the same SVO don't collide.
 
     Returns:
-        Dict with keys: output_dir, analytics_json, video_path, summary.
+        Dict with keys: output_dir, analytics_json, video_path, summary, job_id.
     """
     svo_path  = Path(svo_path)
     stem      = svo_path.stem
-    out_dir   = config.OUTPUT_DIR / stem
+
+    # Output folder: experiment runs go under outputs/experiment/<stem>/<label>
+    safe_label = _sanitize_label(label) if label else None
+    if config.EXPERIMENT_MODE:
+        if safe_label:
+            out_dir = config.OUTPUT_DIR / "experiment" / stem / safe_label
+            job_id  = f"experiment__{stem}__{safe_label}"
+        else:
+            out_dir = config.OUTPUT_DIR / "experiment" / stem
+            job_id  = f"experiment__{stem}"
+    else:
+        out_dir = config.OUTPUT_DIR / stem
+        job_id  = stem
     out_dir.mkdir(parents=True, exist_ok=True)
 
     def _cb(frac: float, msg: str = ""):
@@ -59,7 +84,12 @@ def process_svo(
         frame_height = reader.info.height,
     )
     analytics = Analytics(svo_filename=svo_path.name, fps=reader.info.fps)
-    annotator = Annotator(frame_width=reader.info.width, frame_height=reader.info.height)
+    overlay_label = safe_label or "v3"
+    annotator = Annotator(
+        frame_width  = reader.info.width,
+        frame_height = reader.info.height,
+        version      = overlay_label,
+    )
 
     # ── video writer ──────────────────────────────────────────────────────────
     video_path = out_dir / "annotated.mp4"
@@ -152,11 +182,13 @@ def process_svo(
     print(f"  Output         : {out_dir}")
 
     return {
-        "output_dir":    str(out_dir),
-        "video_path":    str(video_path),
+        "job_id":         job_id,
+        "label":          safe_label,
+        "output_dir":     str(out_dir),
+        "video_path":     str(video_path),
         "analytics_json": str(paths["json"]),
-        "traces_json":   str(traces_path),
-        "summary":       summary,
+        "traces_json":    str(traces_path),
+        "summary":        summary,
     }
 
 
@@ -165,6 +197,8 @@ def process_svo(
 def _cli():
     parser = argparse.ArgumentParser(description="Basketball SVO analytics pipeline")
     parser.add_argument("svo", help="Path to the .svo file")
+    parser.add_argument("--label", default=None,
+                        help="Optional label for this run (used in the output folder name)")
     args = parser.parse_args()
 
     def _print_progress(frac: float, msg: str):
@@ -173,7 +207,7 @@ def _cli():
         bar     = "█" * filled + "░" * (bar_len - filled)
         print(f"\r[{bar}] {frac*100:5.1f}%  {msg:<40}", end="", flush=True)
 
-    process_svo(args.svo, progress_cb=_print_progress)
+    process_svo(args.svo, progress_cb=_print_progress, label=args.label)
     print()   # newline after progress bar
 
 

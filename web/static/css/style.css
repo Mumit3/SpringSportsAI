@@ -181,6 +181,183 @@ code {
 /* Hint text */
 .hint { color: var(--text-muted); font-size: 0.9rem; }
 
+/* Mode picker */
+.mode-picker {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+  padding: 1rem;
+}
+.mode-btn {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1.5rem 1rem;
+  text-align: center;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.4rem;
+  text-decoration: none;
+  color: var(--text);
+  transition: border-color 0.15s, transform 0.1s;
+}
+.mode-btn:hover { border-color: var(--orange); text-decoration: none; transform: translateY(-2px); }
+.mode-icon { font-size: 2rem; }
+.mode-title { font-size: 1.05rem; font-weight: 600; }
+.mode-sub   { font-size: 0.82rem; color: var(--text-muted); }
+
+/* Label input row */
+.label-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.6rem;
+  margin-top: 1.2rem;
+}
+.label-row label {
+  font-size: 0.88rem;
+  color: var(--text-muted);
+}
+.label-row input[type="text"] {
+  flex: 1;
+  min-width: 180px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.5rem 0.8rem;
+  color: var(--text);
+  font-family: monospace;
+  font-size: 0.9rem;
+}
+.label-row input[type="text"]:focus {
+  outline: none;
+  border-color: var(--orange);
+}
+
+.session-label {
+  display: inline-block;
+  margin-left: 0.5rem;
+  background: rgba(249,115,22,0.15);
+  color: var(--orange);
+  border-radius: 4px;
+  padding: 1px 6px;
+  font-size: 0.72rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  font-family: 'Segoe UI', sans-serif;
+}
+
+/* ── Record page ──────────────────────────────────────────────────────────── */
+.card-subtitle {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  font-weight: 400;
+  margin-left: 0.5rem;
+  letter-spacing: 0.04em;
+}
+
+.preview-container {
+  position: relative;
+  background: #000;
+  border-radius: 8px;
+  overflow: hidden;
+  aspect-ratio: 16 / 9;
+  margin-bottom: 1rem;
+}
+.preview-container img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
+}
+.preview-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0,0,0,0.6);
+  color: var(--text-muted);
+  font-size: 0.95rem;
+}
+.preview-overlay.hidden { display: none; }
+
+.record-controls {
+  display: flex;
+  gap: 0.75rem;
+  margin-top: 1rem;
+  flex-wrap: wrap;
+}
+
+.btn-record, .btn-stop {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.7rem 1.5rem;
+  color: var(--text);
+  font-size: 0.95rem;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  transition: border-color 0.15s, background 0.15s;
+}
+.btn-record:hover:not(:disabled) { border-color: var(--red); }
+.btn-record:disabled { opacity: 0.5; cursor: not-allowed; }
+.btn-record .rec-dot {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--red);
+}
+.btn-stop {
+  border-color: var(--orange);
+  color: var(--orange);
+  font-weight: 600;
+}
+.btn-stop:hover:not(:disabled) { background: rgba(249,115,22,0.1); }
+.btn-stop:disabled { opacity: 0.6; cursor: not-allowed; }
+
+.rec-timer {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin-top: 1rem;
+  font-family: monospace;
+  font-size: 1.1rem;
+  color: var(--red);
+}
+.rec-timer.hidden { display: none; }
+.rec-divider { color: var(--text-muted); }
+.rec-bar {
+  flex: 1;
+  height: 6px;
+  background: var(--border);
+  border-radius: 3px;
+  overflow: hidden;
+}
+#rec-bar-fill {
+  height: 100%;
+  width: 0%;
+  background: linear-gradient(90deg, var(--red), var(--orange));
+  border-radius: 3px;
+  transition: width 0.5s linear;
+}
+
+.status-msg {
+  margin-top: 0.8rem;
+  min-height: 1.4em;
+  font-size: 0.88rem;
+  color: var(--text-muted);
+}
+.status-msg[data-kind="error"]     { color: var(--red); }
+.status-msg[data-kind="recording"] { color: var(--red); font-weight: 600; }
+
+.hidden { display: none !important; }
+
 /* ── Results page ──────────────────────────────────────────────────────────── */
 .back-link {
   display: inline-flex;

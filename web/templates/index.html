@@ -1,11 +1,25 @@
 {% extends "base.html" %}
-{% block title %}Select Session — Basketball Analytics{% endblock %}
+{% block title %}Basketball Analytics{% endblock %}
 
 {% block content %}
 <div class="page-index">
 
-  <!-- ── Process new session ─────────────────────────────────── -->
-  <section class="card">
+  <!-- ── Mode picker ───────────────────────────────────────────── -->
+  <section class="card mode-picker">
+    <a href="/record" class="mode-btn">
+      <span class="mode-icon">🔴</span>
+      <span class="mode-title">Record New Session</span>
+      <span class="mode-sub">Live ZED capture &amp; auto-process</span>
+    </a>
+    <div class="mode-btn mode-btn-existing" id="mode-existing">
+      <span class="mode-icon">📁</span>
+      <span class="mode-title">Process Existing SVO</span>
+      <span class="mode-sub">Pick a recording from disk</span>
+    </div>
+  </section>
+
+  <!-- ── Existing-SVO panel (hidden until selected) ────────────── -->
+  <section id="existing-panel" class="card hidden">
     <h2 class="card-title">Process SVO File</h2>
 
     {% if svo_files %}
@@ -21,7 +35,12 @@
     <p class="hint">No .svo files found in <code>svo_files/</code>. Copy your recordings there and refresh.</p>
     {% endif %}
 
-    <!-- Progress panel (hidden until processing starts) -->
+    <div class="label-row">
+      <label for="label-input">Label this run (optional):</label>
+      <input id="label-input" type="text" maxlength="40"
+             placeholder="e.g. tuned_hough_thresholds" />
+    </div>
+
     <div id="progress-panel" class="progress-panel hidden">
       <div class="progress-info">
         <span id="progress-msg">Starting…</span>
@@ -41,7 +60,10 @@
       {% for s in sessions %}
       {% set sm = s.summary %}
       <a href="/results/{{ s.job_id }}" class="session-row">
-        <span class="session-name">{{ s.job_id }}</span>
+        <span class="session-name">
+          {{ s.job_id }}
+          {% if s.label %}<span class="session-label">{{ s.label }}</span>{% endif %}
+        </span>
         <span class="session-stat">{{ sm.total_shots }} shots</span>
         <span class="session-stat make">{{ sm.makes }} makes</span>
         <span class="session-stat pct">{{ sm.fg_pct }}%</span>
