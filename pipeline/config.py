@@ -42,6 +42,10 @@ PREDICT_AHEAD_FRAMES  = 30   # frames to project forward for arc preview
 OF_MAX_MISSED_FRAMES  = 20   # use optical flow up to this many missed frames
 KF_MAX_MISSED_FRAMES  = 60   # keep Kalman-only estimate up to this limit
 
+# Depth-based ball size validation
+BALL_DIAMETER_M       = 0.24   # regulation basketball
+BALL_SIZE_TOLERANCE   = 0.5    # accept ±50 % of expected pixel size at given depth
+
 # ── Shot detector ─────────────────────────────────────────────────────────────
 ARC_VELOCITY_THRESHOLD = 1.0   # m/s upward Kalman velocity → shot triggered
 ARC_MIN_FRAMES         = 8     # arc must last ≥ this many frames to be valid
