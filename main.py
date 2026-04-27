@@ -103,7 +103,7 @@ def process_svo(
                             hoop_3d = (1 - hoop_ema_alpha) * hoop_3d + hoop_ema_alpha * new_h3d
 
                 # ── track ball ────────────────────────────────────────────────────
-                tracker_result = tracker.update(frame.image, frame.point_cloud, ball_det)
+                tracker_result = tracker.update(frame.image, frame.point_cloud, ball_det, hoop_det)
 
                 # ── detect shots ──────────────────────────────────────────────────
                 completed_shot = shot_det.update(idx, tracker_result, hoop_det, hoop_3d)

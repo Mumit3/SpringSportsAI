@@ -57,9 +57,9 @@ MAKE_CHECK_FRAMES = 60
 
 # ── Hoop colour segmentation fallback ────────────────────────────────────────
 # HSV range for the orange steel rim
-HOOP_HSV_LOWER1 = (0,  120, 100)
-HOOP_HSV_UPPER1 = (18, 255, 255)
-HOOP_HSV_LOWER2 = (165, 120, 100)
+HOOP_HSV_LOWER1 = (0,  70, 70)
+HOOP_HSV_UPPER1 = (22, 255, 255)
+HOOP_HSV_LOWER2 = (158, 70, 70)
 HOOP_HSV_UPPER2 = (180, 255, 255)
 HOOP_DEPTH_MIN  = 2.5    # metres — hoop is always this far away
 HOOP_DEPTH_MAX  = 14.0   # metres

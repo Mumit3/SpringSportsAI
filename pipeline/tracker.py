@@ -115,9 +115,10 @@ class BallTracker:
         frame_bgr: np.ndarray,
         frame_pc:  np.ndarray,
         ball_det:  Optional[Detection],
+        hoop_det:  Optional[Detection] = None,
     ) -> TrackerResult:
         gray = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2GRAY)
-        return self._compute(gray, frame_pc, ball_det)
+        return self._compute(gray, frame_pc, ball_det, hoop_det)
 
     def reset(self) -> None:
         self._kf.reset()
@@ -133,6 +134,7 @@ class BallTracker:
         gray:     np.ndarray,
         pc:       np.ndarray,
         ball_det: Optional[Detection],
+        hoop_det: Optional[Detection] = None,
     ) -> TrackerResult:
         source = "none"
         pos3d: Optional[np.ndarray] = None
@@ -156,6 +158,14 @@ class BallTracker:
         # ── Layer 2: Optical Flow ─────────────────────────────────────────────
         if pos3d is None and self._missed < config.OF_MAX_MISSED_FRAMES:
             of_2d = self._of.track(gray)
+            # Reject OF result if it landed on the hoop — rim confuses tracker
+            if of_2d is not None and hoop_det is not None:
+                u_of, v_of = of_2d
+                hx1, hy1, hx2, hy2 = hoop_det.bbox
+                pad = 15
+                if (hx1-pad <= u_of <= hx2+pad) and (hy1-pad <= v_of <= hy2+pad):
+                    of_2d = None
+                    self._of.reset()
             if of_2d is not None:
                 u, v   = of_2d
                 p3d    = self._reader.pixel_to_3d(pc, u, v)
