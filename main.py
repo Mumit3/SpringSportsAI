@@ -54,18 +54,22 @@ def process_svo(
     svo_path  = Path(svo_path)
     stem      = svo_path.stem
 
-    # Output folder: experiment runs go under outputs/experiment/<stem>/<label>
+    # Output layout:
+    #   EXPERIMENT_MODE: flat — outputs/experiment/<run_name>.mp4 plus
+    #                    <run_name>_analytics.json / _traces.json / _shots.csv
+    #                    All files sit directly under outputs/experiment/.
+    #   else (legacy):   outputs/<stem>/annotated.mp4 + analytics.json + ...
     safe_label = _sanitize_label(label) if label else None
     if config.EXPERIMENT_MODE:
-        if safe_label:
-            out_dir = config.OUTPUT_DIR / "experiment" / stem / safe_label
-            job_id  = f"experiment__{stem}__{safe_label}"
-        else:
-            out_dir = config.OUTPUT_DIR / "experiment" / stem
-            job_id  = f"experiment__{stem}"
+        out_dir   = config.OUTPUT_DIR / "experiment"
+        run_name  = safe_label or stem
+        job_id    = f"experiment__{run_name}"
+        prefix    = run_name           # → <run_name>.mp4, <run_name>_analytics.json
     else:
-        out_dir = config.OUTPUT_DIR / stem
-        job_id  = stem
+        out_dir   = config.OUTPUT_DIR / stem
+        run_name  = stem
+        job_id    = stem
+        prefix    = ""                 # legacy: annotated.mp4 / analytics.json
     out_dir.mkdir(parents=True, exist_ok=True)
 
     def _cb(frac: float, msg: str = ""):
@@ -92,7 +96,7 @@ def process_svo(
     )
 
     # ── video writer ──────────────────────────────────────────────────────────
-    video_path = out_dir / "annotated.mp4"
+    video_path = out_dir / (f"{prefix}.mp4" if prefix else "annotated.mp4")
     fourcc     = cv2.VideoWriter_fourcc(*"mp4v")
     writer     = cv2.VideoWriter(
         str(video_path), fourcc,
@@ -164,11 +168,12 @@ def process_svo(
         writer.release()
 
     # ── save analytics ────────────────────────────────────────────────────────
-    paths   = analytics.save(out_dir)
+    paths   = analytics.save(out_dir, name_prefix=prefix)
     summary = analytics.summary()
 
     # Save Plotly trace data for the web UI
-    traces_path = out_dir / "traces.json"
+    traces_filename = f"{prefix}_traces.json" if prefix else "traces.json"
+    traces_path     = out_dir / traces_filename
     with open(traces_path, "w") as f:
         json.dump(analytics.plotly_traces(reader.info.width, reader.info.height), f)
 

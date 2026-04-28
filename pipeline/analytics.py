@@ -51,7 +51,11 @@ class Analytics:
 
     # ── persistence ───────────────────────────────────────────────────────────
 
-    def save(self, output_dir: Path) -> Dict[str, Path]:
+    def save(self, output_dir: Path, name_prefix: str = "") -> Dict[str, Path]:
+        """Save analytics. If name_prefix is given, files are named
+        '<prefix>_analytics.json' and '<prefix>_shots.csv' (flat layout).
+        Otherwise legacy 'analytics.json' / 'shots.csv' filenames are used.
+        """
         output_dir = Path(output_dir)
         output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -60,11 +64,12 @@ class Analytics:
             "shots":   self.shot_list(),
         }
 
-        json_path = output_dir / "analytics.json"
+        prefix = f"{name_prefix}_" if name_prefix else ""
+        json_path = output_dir / f"{prefix}analytics.json"
         with open(json_path, "w") as f:
             json.dump(payload, f, indent=2)
 
-        csv_path = output_dir / "shots.csv"
+        csv_path = output_dir / f"{prefix}shots.csv"
         rows     = self.shot_list()
         if rows:
             with open(csv_path, "w", newline="") as f:

@@ -9,7 +9,7 @@ MODELS_DIR = ROOT_DIR / "models"
 # Default model: YOLOv8n pretrained on COCO (auto-downloaded by ultralytics).
 # To use a custom basketball model, set this to the .pt file path.
 YOLO_MODEL_PATH = str(MODELS_DIR / "basketball.pt")   # custom if exists
-YOLO_FALLBACK   = "yolov8n.pt"                        # COCO fallback
+YOLO_FALLBACK   = "yolov8s.pt"                        # COCO fallback (small ≈ 3-4× better small-object recall than nano)
 
 # ── ZED SDK ──────────────────────────────────────────────────────────────────
 DEPTH_MODE  = "NEURAL"   # NEURAL | ULTRA | QUALITY | PERFORMANCE
@@ -32,10 +32,9 @@ BALL_CONF_FLIGHT = 0.18   # lowered while ball is confirmed in-flight
 HOOP_CONF        = 0.25
 HOOP_POLL_FRAMES = 5      # re-run hoop detector every N frames (post-calibration)
 
-# YOLO inference resolution. Default ultralytics is 640 — too small for a
-# distant ball in HD2K (ball becomes ~9 px). 1280 keeps it ~18 px and
-# significantly improves recall against busy backgrounds (e.g. vent grates).
-# Must be a multiple of 32. Higher = slower; 1280 ≈ 2-3× slower than 640.
+# YOLO inference resolution. Default is 640 — too small for a distant ball in
+# HD2K (ball becomes ~9 px). 1280 keeps it ~18 px and significantly improves
+# recall against busy backgrounds (e.g. vent grates). Must be multiple of 32.
 YOLO_IMGSZ = 1280
 
 # Hoop calibration: detect every frame for first N frames, cluster, then LOCK

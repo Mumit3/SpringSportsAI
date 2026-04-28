@@ -84,15 +84,54 @@ def _list_svo_files():
     ])
 
 
-def _job_id_to_dir(job_id: str) -> Path:
-    """Map a job_id back to its output directory."""
+def _job_id_to_files(job_id: str) -> dict:
+    """Map a job_id to its output files. Handles both new flat layout and
+    legacy nested layout. Returns dict: dir, video, analytics, traces."""
+    out = config.OUTPUT_DIR
+
     if job_id.startswith("experiment__"):
         rest = job_id[len("experiment__"):]
+
+        # Legacy nested: experiment/<stem>/<label>/annotated.mp4
         if "__" in rest:
             stem, label = rest.split("__", 1)
-            return config.OUTPUT_DIR / "experiment" / stem / label
-        return config.OUTPUT_DIR / "experiment" / rest
-    return config.OUTPUT_DIR / job_id
+            legacy = out / "experiment" / stem / label
+            if (legacy / "annotated.mp4").exists():
+                return {
+                    "dir":       legacy,
+                    "video":     legacy / "annotated.mp4",
+                    "analytics": legacy / "analytics.json",
+                    "traces":    legacy / "traces.json",
+                }
+            rest = label   # fall through to flat lookup using label
+
+        # Legacy single-level: experiment/<rest>/annotated.mp4
+        legacy_single = out / "experiment" / rest
+        if (legacy_single / "annotated.mp4").exists():
+            return {
+                "dir":       legacy_single,
+                "video":     legacy_single / "annotated.mp4",
+                "analytics": legacy_single / "analytics.json",
+                "traces":    legacy_single / "traces.json",
+            }
+
+        # New flat layout
+        flat = out / "experiment"
+        return {
+            "dir":       flat,
+            "video":     flat / f"{rest}.mp4",
+            "analytics": flat / f"{rest}_analytics.json",
+            "traces":    flat / f"{rest}_traces.json",
+        }
+
+    # Non-experiment legacy
+    legacy_root = out / job_id
+    return {
+        "dir":       legacy_root,
+        "video":     legacy_root / "annotated.mp4",
+        "analytics": legacy_root / "analytics.json",
+        "traces":    legacy_root / "traces.json",
+    }
 
 
 def _list_results():
@@ -120,9 +159,27 @@ def _list_results():
             except Exception:
                 pass
 
-    # Experiment-branch layout: outputs/experiment/<stem>/<label>/analytics.json
+    # Experiment layouts (any of the three):
+    #   1. Flat (current):   outputs/experiment/<name>_analytics.json
+    #   2. Single-nested:    outputs/experiment/<stem>/analytics.json
+    #   3. Double-nested:    outputs/experiment/<stem>/<label>/analytics.json
     exp_root = out / "experiment"
     if exp_root.exists():
+        # ── 1. Flat layout — analytics files directly under experiment/ ──
+        for f in sorted(exp_root.glob("*_analytics.json")):
+            name = f.name[:-len("_analytics.json")]
+            try:
+                with open(f) as fh:
+                    data = json.load(fh)
+                sessions.append({
+                    "job_id":  f"experiment__{name}",
+                    "label":   name,
+                    "summary": data.get("summary", {}),
+                })
+            except Exception:
+                pass
+
+        # ── 2/3. Legacy nested layouts ──
         for stem_dir in sorted(exp_root.iterdir()):
             if not stem_dir.is_dir():
                 continue
@@ -142,7 +199,6 @@ def _list_results():
                         except Exception:
                             pass
             else:
-                # no label sub-folder; analytics may sit directly under stem
                 j = stem_dir / "analytics.json"
                 if j.exists():
                     try:
@@ -165,8 +221,8 @@ def _start_job(svo_path: str, label: str = None) -> str:
     safe = _sanitize_label(label) if label else None
 
     if config.EXPERIMENT_MODE:
-        job_id = (f"experiment__{svo_p.stem}__{safe}"
-                  if safe else f"experiment__{svo_p.stem}")
+        run_name = safe or svo_p.stem
+        job_id   = f"experiment__{run_name}"
     else:
         job_id = svo_p.stem
 
@@ -241,12 +297,9 @@ def record_page():
 
 @app.route("/results/<job_id>")
 def results_page(job_id: str):
-    out_dir = _job_id_to_dir(job_id)
-    if not out_dir.exists():
-        abort(404)
-
-    analytics_path = out_dir / "analytics.json"
-    traces_path    = out_dir / "traces.json"
+    files = _job_id_to_files(job_id)
+    analytics_path = files["analytics"]
+    traces_path    = files["traces"]
 
     if not analytics_path.exists():
         abort(404)
@@ -320,7 +373,7 @@ def api_status_sse(job_id: str):
 
 @app.route("/api/results/<job_id>")
 def api_results(job_id: str):
-    p = _job_id_to_dir(job_id) / "analytics.json"
+    p = _job_id_to_files(job_id)["analytics"]
     if not p.exists():
         abort(404)
     with open(p) as f:
@@ -329,7 +382,7 @@ def api_results(job_id: str):
 
 @app.route("/video/<job_id>")
 def serve_video(job_id: str):
-    video = _job_id_to_dir(job_id) / "annotated.mp4"
+    video = _job_id_to_files(job_id)["video"]
     if not video.exists():
         abort(404)
     return send_file(str(video), mimetype="video/mp4", conditional=True)
