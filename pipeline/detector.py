@@ -99,7 +99,7 @@ class BallHoopDetector:
             return None
 
         conf = conf_override or config.BALL_CONF_NORMAL
-        results = self._model(frame, verbose=False, conf=conf)[0]
+        results = self._model(frame, verbose=False, conf=conf, imgsz=config.YOLO_IMGSZ)[0]
 
         best: Optional[Detection] = None
 
@@ -199,7 +199,7 @@ class BallHoopDetector:
     def _detect_hoop_yolo(self, frame: np.ndarray) -> Optional[Detection]:
         if self._model is None:
             return None
-        results = self._model(frame, verbose=False, conf=config.HOOP_CONF)[0]
+        results = self._model(frame, verbose=False, conf=config.HOOP_CONF, imgsz=config.YOLO_IMGSZ)[0]
         if self._model_type == "custom":
             return self._best_from_results(results, config.CUSTOM_HOOP_NAMES, config.HOOP_CONF)
         return None   # COCO has no hoop class

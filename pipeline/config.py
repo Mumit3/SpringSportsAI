@@ -32,6 +32,12 @@ BALL_CONF_FLIGHT = 0.18   # lowered while ball is confirmed in-flight
 HOOP_CONF        = 0.25
 HOOP_POLL_FRAMES = 5      # re-run hoop detector every N frames (post-calibration)
 
+# YOLO inference resolution. Default ultralytics is 640 — too small for a
+# distant ball in HD2K (ball becomes ~9 px). 1280 keeps it ~18 px and
+# significantly improves recall against busy backgrounds (e.g. vent grates).
+# Must be a multiple of 32. Higher = slower; 1280 ≈ 2-3× slower than 640.
+YOLO_IMGSZ = 1280
+
 # Hoop calibration: detect every frame for first N frames, cluster, then LOCK
 HOOP_CALIBRATION_FRAMES = 60
 HOOP_CLUSTER_TOLERANCE_PX = 30   # detections within this distance count as same hoop
