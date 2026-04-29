@@ -70,10 +70,19 @@ class BallHoopDetector:
             print(f"[Detector] Loading custom model: {custom}")
             self._model      = YOLO(str(custom))
             self._model_type = "custom"
-        else:
-            print(f"[Detector] Custom model not found. Using COCO {config.YOLO_FALLBACK}")
-            self._model      = YOLO(config.YOLO_FALLBACK)
+            return
+
+        # Prefer TensorRT engine if available (Jetson optimisation).
+        engine_path = Path(config.YOLO_FALLBACK).with_suffix(".engine")
+        if config.USE_TENSORRT and engine_path.exists():
+            print(f"[Detector] Loading TensorRT engine: {engine_path}")
+            self._model      = YOLO(str(engine_path))
             self._model_type = "coco"
+            return
+
+        print(f"[Detector] Using COCO {config.YOLO_FALLBACK}")
+        self._model      = YOLO(config.YOLO_FALLBACK)
+        self._model_type = "coco"
 
     # ── public API ────────────────────────────────────────────────────────────
 

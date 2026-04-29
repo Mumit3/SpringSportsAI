@@ -164,6 +164,14 @@ def _list_results():
     #   2. Single-nested:    outputs/experiment/<stem>/analytics.json
     #   3. Double-nested:    outputs/experiment/<stem>/<label>/analytics.json
     exp_root = out / "experiment"
+    seen_job_ids: set = set()
+
+    def _add(job_id, label, summary):
+        if job_id in seen_job_ids:
+            return
+        seen_job_ids.add(job_id)
+        sessions.append({"job_id": job_id, "label": label, "summary": summary})
+
     if exp_root.exists():
         # ── 1. Flat layout — analytics files directly under experiment/ ──
         for f in sorted(exp_root.glob("*_analytics.json")):
@@ -171,11 +179,7 @@ def _list_results():
             try:
                 with open(f) as fh:
                     data = json.load(fh)
-                sessions.append({
-                    "job_id":  f"experiment__{name}",
-                    "label":   name,
-                    "summary": data.get("summary", {}),
-                })
+                _add(f"experiment__{name}", name, data.get("summary", {}))
             except Exception:
                 pass
 
@@ -191,11 +195,8 @@ def _list_results():
                         try:
                             with open(j) as f:
                                 data = json.load(f)
-                            sessions.append({
-                                "job_id":  f"experiment__{stem_dir.name}__{label_dir.name}",
-                                "label":   label_dir.name,
-                                "summary": data.get("summary", {}),
-                            })
+                            _add(f"experiment__{stem_dir.name}__{label_dir.name}",
+                                 label_dir.name, data.get("summary", {}))
                         except Exception:
                             pass
             else:
@@ -204,11 +205,8 @@ def _list_results():
                     try:
                         with open(j) as f:
                             data = json.load(f)
-                        sessions.append({
-                            "job_id":  f"experiment__{stem_dir.name}",
-                            "label":   None,
-                            "summary": data.get("summary", {}),
-                        })
+                        _add(f"experiment__{stem_dir.name}", None,
+                             data.get("summary", {}))
                     except Exception:
                         pass
 
@@ -330,16 +328,28 @@ def api_files():
 
 @app.route("/api/process", methods=["POST"])
 def api_process():
+    """Start a pipeline job. Accepts either:
+      - filename: relative to config.SVO_DIR (legacy file-grid picker), OR
+      - path:     absolute path to an SVO file anywhere on disk.
+    """
     data     = request.get_json(force=True)
     filename = (data.get("filename") or "").strip()
+    raw_path = (data.get("path") or "").strip()
     label    = (data.get("label") or "").strip() or None
 
-    if not filename:
-        return jsonify({"error": "No filename provided"}), 400
+    if raw_path:
+        svo_path = Path(raw_path).expanduser()
+        if not svo_path.is_absolute():
+            svo_path = (Path.cwd() / svo_path).resolve()
+    elif filename:
+        svo_path = config.SVO_DIR / filename
+    else:
+        return jsonify({"error": "No filename or path provided"}), 400
 
-    svo_path = config.SVO_DIR / filename
     if not svo_path.exists():
-        return jsonify({"error": f"File not found: {filename}"}), 404
+        return jsonify({"error": f"File not found: {svo_path}"}), 404
+    if svo_path.suffix.lower() not in (".svo", ".svo2"):
+        return jsonify({"error": f"Not an SVO file: {svo_path.name}"}), 400
 
     job_id = _start_job(str(svo_path), label=label)
     return jsonify({"job_id": job_id, "status": "started"}), 202

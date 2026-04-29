@@ -6,10 +6,15 @@ SVO_DIR    = ROOT_DIR / "svo_files"
 OUTPUT_DIR = ROOT_DIR / "outputs"
 MODELS_DIR = ROOT_DIR / "models"
 
-# Default model: YOLOv8n pretrained on COCO (auto-downloaded by ultralytics).
+# Default model: YOLOv8s pretrained on COCO (auto-downloaded by ultralytics).
 # To use a custom basketball model, set this to the .pt file path.
 YOLO_MODEL_PATH = str(MODELS_DIR / "basketball.pt")   # custom if exists
 YOLO_FALLBACK   = "yolov8s.pt"                        # COCO fallback (small ≈ 3-4× better small-object recall than nano)
+
+# TensorRT acceleration on Jetson. If a yolov8s.engine file exists alongside
+# the .pt, the detector loads the engine instead — typically 3-5× faster on
+# Xavier NX with no accuracy loss. Build it with: python tools/export_tensorrt.py
+USE_TENSORRT = True
 
 # ── ZED SDK ──────────────────────────────────────────────────────────────────
 DEPTH_MODE  = "NEURAL"   # NEURAL | ULTRA | QUALITY | PERFORMANCE

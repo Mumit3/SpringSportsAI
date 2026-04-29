@@ -249,6 +249,52 @@ code {
   font-family: 'Segoe UI', sans-serif;
 }
 
+/* Custom path picker */
+.custom-path-row {
+  margin-top: 1.2rem;
+  padding-top: 1rem;
+  border-top: 1px dashed var(--border);
+}
+.custom-path-row > label {
+  display: block;
+  font-size: 0.88rem;
+  color: var(--text-muted);
+  margin-bottom: 0.4rem;
+}
+.custom-path-input-wrap {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+.custom-path-input-wrap input[type="text"] {
+  flex: 1;
+  min-width: 220px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.55rem 0.8rem;
+  color: var(--text);
+  font-family: monospace;
+  font-size: 0.88rem;
+}
+.custom-path-input-wrap input[type="text"]:focus {
+  outline: none;
+  border-color: var(--orange);
+}
+.btn-primary {
+  background: var(--orange);
+  border: 1px solid var(--orange);
+  color: #fff;
+  border-radius: 6px;
+  padding: 0.55rem 1.2rem;
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 0.9rem;
+  transition: background 0.15s, border-color 0.15s;
+}
+.btn-primary:hover { background: var(--orange-dim); border-color: var(--orange-dim); }
+.btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+
 /* ── Record page ──────────────────────────────────────────────────────────── */
 .card-subtitle {
   font-size: 0.78rem;

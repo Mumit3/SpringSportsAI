@@ -23,6 +23,7 @@
     <h2 class="card-title">Process SVO File</h2>
 
     {% if svo_files %}
+    <p class="hint">Click a recording from <code>svo_files/</code>:</p>
     <div class="file-grid">
       {% for name in svo_files %}
       <button class="file-btn" data-filename="{{ name }}">
@@ -32,13 +33,23 @@
       {% endfor %}
     </div>
     {% else %}
-    <p class="hint">No .svo files found in <code>svo_files/</code>. Copy your recordings there and refresh.</p>
+    <p class="hint">No .svo files found in <code>svo_files/</code>. Use the path field below to load one from anywhere.</p>
     {% endif %}
+
+    <!-- ── Custom path: process an SVO from anywhere on disk ─────── -->
+    <div class="custom-path-row">
+      <label for="custom-path">Or load from any folder on the Jetson:</label>
+      <div class="custom-path-input-wrap">
+        <input id="custom-path" type="text"
+               placeholder="/home/rc/SpringSportsAI/new_svo_files/myshot.svo2" />
+        <button id="process-custom-path" class="btn-primary">Process</button>
+      </div>
+    </div>
 
     <div class="label-row">
       <label for="label-input">Label this run (optional):</label>
       <input id="label-input" type="text" maxlength="40"
-             placeholder="e.g. tuned_hough_thresholds" />
+             placeholder="e.g. tensorrt_v1" />
     </div>
 
     <div id="progress-panel" class="progress-panel hidden">

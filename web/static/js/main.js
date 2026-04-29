@@ -12,14 +12,14 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   // ── existing-SVO processing ──────────────────────────────────
-  const fileBtns      = document.querySelectorAll('.file-btn');
-  const labelInput    = document.getElementById('label-input');
-  const progressPanel = document.getElementById('progress-panel');
-  const progressBar   = document.getElementById('progress-bar');
-  const progressMsg   = document.getElementById('progress-msg');
-  const progressPct   = document.getElementById('progress-pct');
-
-  if (!fileBtns.length) return;
+  const fileBtns       = document.querySelectorAll('.file-btn');
+  const labelInput     = document.getElementById('label-input');
+  const customPathIn   = document.getElementById('custom-path');
+  const customPathBtn  = document.getElementById('process-custom-path');
+  const progressPanel  = document.getElementById('progress-panel');
+  const progressBar    = document.getElementById('progress-bar');
+  const progressMsg    = document.getElementById('progress-msg');
+  const progressPct    = document.getElementById('progress-pct');
 
   let activeEventSource = null;
 
@@ -29,20 +29,41 @@ document.addEventListener('DOMContentLoaded', () => {
       btn.classList.add('selected');
       const filename = btn.dataset.filename;
       const label    = (labelInput && labelInput.value.trim()) || null;
-      startProcessing(filename, label);
+      startProcessing({ filename, label });
     });
   });
 
-  function startProcessing(filename, label) {
+  if (customPathBtn) {
+    customPathBtn.addEventListener('click', () => {
+      const path  = (customPathIn.value || '').trim();
+      const label = (labelInput && labelInput.value.trim()) || null;
+      if (!path) {
+        if (progressPanel) progressPanel.classList.remove('hidden');
+        setProgress(0, 'Enter a path or click a file from the grid.');
+        return;
+      }
+      fileBtns.forEach(b => b.classList.remove('selected'));
+      startProcessing({ path, label });
+    });
+
+    customPathIn.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        customPathBtn.click();
+      }
+    });
+  }
+
+  function startProcessing(payload) {
     if (progressPanel) progressPanel.classList.remove('hidden');
-    setProgress(0, `Starting ${filename}…`);
+    setProgress(0, `Starting ${payload.path || payload.filename}…`);
 
     if (activeEventSource) activeEventSource.close();
 
     fetch('/api/process', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ filename, label }),
+      body: JSON.stringify(payload),
     })
     .then(r => r.json())
     .then(data => {
