@@ -264,15 +264,19 @@ class ShotDetector:
         hoop_det: Optional[Detection],
         hoop_3d:  Optional[np.ndarray],
     ) -> Outcome:
-        # Primary: 3-D cylinder through hoop plane
-        if tracker.position_3d is not None and hoop_3d is not None:
-            outcome = self._classify_3d(tracker.position_3d, tracker.velocity_3d, hoop_3d)
-            if outcome != Outcome.PENDING:
-                return outcome
-
-        # Fallback: 2-D bounding-box overlap with downward velocity
+        # 2-D first: only ever returns MAKE or PENDING. At long range (~8 m to
+        # the hoop) ZED depth on a small fast ball is noisier than the 3-D
+        # cylinder radius, so trusting 3-D as primary causes valid makes to be
+        # ruled out before 2-D ever sees the trajectory crossing.
         if tracker.position_2d is not None and hoop_det is not None:
             outcome = self._classify_2d(tracker, hoop_det)
+            if outcome == Outcome.MAKE:
+                return outcome
+
+        # 3-D second: confirms makes via cylinder pass-through and detects
+        # rim bounces / sideways slips.
+        if tracker.position_3d is not None and hoop_3d is not None:
+            outcome = self._classify_3d(tracker.position_3d, tracker.velocity_3d, hoop_3d)
             if outcome != Outcome.PENDING:
                 return outcome
 
@@ -335,10 +339,10 @@ class ShotDetector:
             if frames_since_entry >= 6 and in_cylinder and descending:
                 return Outcome.MAKE
 
-        # Never entered cylinder, but ball passed well below hoop → MISS
-        if ball_y < hoop_y - 0.4 and self._cylinder_entry_frame < 0:
-            return Outcome.MISS
-
+        # NOTE: do NOT fire MISS here just because ball dropped below hoop
+        # without "entering the cylinder" — at long range the cylinder check
+        # is unreliable due to depth noise. The arc termination in
+        # _track_arc will mark MISS if no MAKE is detected anywhere.
         return Outcome.PENDING
 
     def _classify_2d(
@@ -362,7 +366,7 @@ class ShotDetector:
 
         bx, by = tracker.position_2d
         hx1, hy1, hx2, hy2 = hoop_det.bbox
-        pad = 25
+        pad = 40
         rx1, ry1, rx2, ry2 = hx1-pad, hy1-pad, hx2+pad, hy2+pad
 
         # Current point inside padded bbox
