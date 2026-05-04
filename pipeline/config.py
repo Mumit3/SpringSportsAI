@@ -60,6 +60,15 @@ KF_MAX_MISSED_FRAMES  = 60   # keep Kalman-only estimate up to this limit
 BALL_DIAMETER_M       = 0.24   # regulation basketball
 BALL_SIZE_TOLERANCE   = 0.5    # accept ±50 % of expected pixel size at given depth
 
+# 3-D plausibility filter — reject ball detections at impossible positions
+# (a real basketball during a shot can't be at floor level, right against the
+# camera lens, or wildly out of plane with the hoop). yolov8s @ 1280 picks up
+# more low-confidence false positives than yolov8n @ 640, so this filter
+# becomes important to suppress them before the tracker locks onto noise.
+BALL_MIN_Y             = 0.3   # metres above floor — below this is dribble/floor
+BALL_MIN_Z             = 1.5   # metres from camera — closer than this is a hand
+BALL_HOOP_Z_TOLERANCE  = 6.0   # metres — ball's Z must be within this of hoop's Z
+
 # Hough Circle recovery — search for ball as a circle in Kalman-predicted ROI
 HOUGH_ROI_FACTOR      = 5.0    # ROI half-size = factor × expected radius
 HOUGH_RADIUS_MIN_FRAC = 0.7    # search radii from 0.7× to 1.4× expected

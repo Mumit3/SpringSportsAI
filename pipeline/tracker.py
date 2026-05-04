@@ -116,9 +116,10 @@ class BallTracker:
         frame_pc:  np.ndarray,
         ball_det:  Optional[Detection],
         hoop_det:  Optional[Detection] = None,
+        hoop_3d:   Optional[np.ndarray] = None,
     ) -> TrackerResult:
         gray = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2GRAY)
-        return self._compute(gray, frame_pc, ball_det, hoop_det)
+        return self._compute(gray, frame_pc, ball_det, hoop_det, hoop_3d)
 
     def reset(self) -> None:
         self._kf.reset()
@@ -126,6 +127,29 @@ class BallTracker:
         self._missed    = 0
         self._in_flight = False
         self._trail.clear()
+
+    def _ball_position_plausible(
+        self,
+        p3d: np.ndarray,
+        hoop_3d: Optional[np.ndarray],
+    ) -> bool:
+        """Reject 3-D positions that can't be a basketball during a shot.
+
+        Filters out floor-level detections (jerseys, feet, balls on the ground),
+        right-at-the-camera detections (hands, arms in foreground), and balls
+        wildly out of depth with the locked hoop.
+        """
+        y = float(p3d[1])
+        z = float(p3d[2])
+
+        if y < config.BALL_MIN_Y:
+            return False
+        if z < config.BALL_MIN_Z:
+            return False
+        if hoop_3d is not None:
+            if abs(z - float(hoop_3d[2])) > config.BALL_HOOP_Z_TOLERANCE:
+                return False
+        return True
 
     def _ball_size_matches_depth(self, det: Detection, depth: float) -> bool:
         """Check that detection pixel size matches a basketball at this depth.
@@ -230,6 +254,7 @@ class BallTracker:
         pc:       np.ndarray,
         ball_det: Optional[Detection],
         hoop_det: Optional[Detection] = None,
+        hoop_3d:  Optional[np.ndarray] = None,
     ) -> TrackerResult:
         source = "none"
         pos3d: Optional[np.ndarray] = None
@@ -237,7 +262,9 @@ class BallTracker:
         # ── Layer 1: YOLO ─────────────────────────────────────────────────────
         if ball_det is not None:
             p3d = self._reader.pixel_to_3d(pc, ball_det.cx, ball_det.cy)
-            if p3d is not None and self._ball_size_matches_depth(ball_det, float(p3d[2])):
+            if (p3d is not None
+                    and self._ball_size_matches_depth(ball_det, float(p3d[2]))
+                    and self._ball_position_plausible(p3d, hoop_3d)):
                 pos3d  = p3d
                 source = "yolo"
                 self._missed = 0
@@ -270,6 +297,10 @@ class BallTracker:
                     if abs(float(p3d[2]) - pred_z) > config.OF_DEPTH_TOLERANCE_M:
                         p3d = None   # OF drifted to wrong depth — reject
                         self._of.reset()
+                # 3-D plausibility filter
+                if p3d is not None and not self._ball_position_plausible(p3d, hoop_3d):
+                    p3d = None
+                    self._of.reset()
                 if p3d is not None:
                     pos3d  = p3d
                     source = "optical_flow"
@@ -285,14 +316,15 @@ class BallTracker:
             recovered = self._hough_recover(gray, pc)
             if recovered is not None:
                 (u, v), p3d = recovered
-                pos3d  = p3d
-                source = "hough"
-                # Re-seed optical flow at the recovered position
-                r_seed = 18
-                self._of.init(gray, (u-r_seed, v-r_seed, u+r_seed, v+r_seed))
-                # Kalman update with elevated noise (less trust than YOLO)
-                self._kf.predict()
-                self._kf.update(pos3d, noise_scale=2.0)
+                if self._ball_position_plausible(p3d, hoop_3d):
+                    pos3d  = p3d
+                    source = "hough"
+                    # Re-seed optical flow at the recovered position
+                    r_seed = 18
+                    self._of.init(gray, (u-r_seed, v-r_seed, u+r_seed, v+r_seed))
+                    # Kalman update with elevated noise (less trust than YOLO)
+                    self._kf.predict()
+                    self._kf.update(pos3d, noise_scale=2.0)
 
         # ── Layer 3: Kalman predict-only ──────────────────────────────────────
         if pos3d is None:

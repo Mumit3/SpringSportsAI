@@ -128,7 +128,9 @@ def process_svo(
                               f"X={hoop_3d[0]:.2f} Y={hoop_3d[1]:.2f} Z={hoop_3d[2]:.2f}")
 
                 # ── track ball ────────────────────────────────────────────────────
-                tracker_result = tracker.update(frame.image, frame.point_cloud, ball_det, hoop_det)
+                tracker_result = tracker.update(
+                    frame.image, frame.point_cloud, ball_det, hoop_det, hoop_3d,
+                )
 
                 # ── detect shots ──────────────────────────────────────────────────
                 completed_shot = shot_det.update(idx, tracker_result, hoop_det, hoop_3d)
