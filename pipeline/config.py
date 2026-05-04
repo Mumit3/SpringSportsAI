@@ -85,6 +85,11 @@ MAKE_CYLINDER_RADIUS = 0.30
 # How many frames after shot release to keep checking for make/miss
 MAKE_CHECK_FRAMES = 60
 
+# Print per-shot diagnostic block at finalise time. Useful for figuring out
+# why a shot was classified the way it was — shows closest 3-D approach,
+# cylinder entry, 2-D bbox proximity, and which rule fired.
+DEBUG_SHOT_DETECTION = True
+
 # ── Hoop colour segmentation fallback ────────────────────────────────────────
 # HSV range for the orange steel rim
 HOOP_HSV_LOWER1 = (0,  90, 80)

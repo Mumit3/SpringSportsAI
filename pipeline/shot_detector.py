@@ -93,6 +93,17 @@ class ShotDetector:
         self._cylinder_entry_frame: int = -1
         self._cylinder_entry_vy:    float = 0.0
 
+        # Per-shot debug stats — reset per shot
+        self._dbg_trigger_method: str = ""
+        self._dbg_min_horiz_dist: float = float("inf")
+        self._dbg_min_horiz_frame: int = -1
+        self._dbg_min_horiz_descending: bool = False
+        self._dbg_min_2d_dist:    float = float("inf")
+        self._dbg_was_in_2d_bbox: bool = False
+        self._dbg_hoop_3d:        Optional[np.ndarray] = None
+        self._dbg_hoop_bbox:      Optional[tuple] = None
+        self._dbg_classify_reason: str = ""
+
         self.completed_shots: List[ShotEvent] = []
 
     # ── public ────────────────────────────────────────────────────────────────
@@ -131,12 +142,14 @@ class ShotDetector:
             return None
 
         triggered = False
+        method = ""
 
         # Method A: 3-D arc — upward Kalman velocity exceeds threshold
         if tracker.velocity_3d is not None:
             vy = float(tracker.velocity_3d[1])
             if vy > config.ARC_VELOCITY_THRESHOLD:
                 triggered = True
+                method = "A (3D vy)"
 
         # Method B: 2-D pixel rise — ball rises > threshold in rolling window
         if not triggered and len(self._ball_y_window) >= config.PIXEL_RISE_WINDOW:
@@ -144,9 +157,21 @@ class ShotDetector:
             rise_px = y_vals[-1] - y_vals[0]   # negative = rising (image y flipped)
             if -rise_px / self._fh > config.PIXEL_RISE_THRESHOLD:
                 triggered = True
+                method = "B (2D rise)"
 
         if not triggered:
             return None
+
+        # Reset per-shot debug stats
+        self._dbg_trigger_method  = method
+        self._dbg_min_horiz_dist  = float("inf")
+        self._dbg_min_horiz_frame = -1
+        self._dbg_min_horiz_descending = False
+        self._dbg_min_2d_dist     = float("inf")
+        self._dbg_was_in_2d_bbox  = False
+        self._dbg_hoop_3d         = hoop_3d.copy() if hoop_3d is not None else None
+        self._dbg_hoop_bbox       = None
+        self._dbg_classify_reason = ""
 
         # Initialise a new shot event
         self._shot_id     += 1
@@ -200,6 +225,37 @@ class ShotDetector:
                 self._apex_y3d      = float(tracker.position_3d[1])
                 self._current.apex_pos = tracker.position_3d.copy()
 
+        # Debug: track closest 3-D horizontal approach to hoop
+        if (config.DEBUG_SHOT_DETECTION
+                and tracker.position_3d is not None
+                and hoop_3d is not None):
+            dx = float(tracker.position_3d[0]) - float(hoop_3d[0])
+            dz = float(tracker.position_3d[2]) - float(hoop_3d[2])
+            hdist = float(np.sqrt(dx*dx + dz*dz))
+            if hdist < self._dbg_min_horiz_dist:
+                self._dbg_min_horiz_dist = hdist
+                self._dbg_min_horiz_frame = frame_idx
+                self._dbg_min_horiz_descending = (
+                    tracker.velocity_3d is not None
+                    and float(tracker.velocity_3d[1]) < 0.1
+                )
+
+        # Debug: track 2-D bbox proximity / containment
+        if (config.DEBUG_SHOT_DETECTION
+                and tracker.position_2d is not None
+                and hoop_det is not None):
+            self._dbg_hoop_bbox = hoop_det.bbox
+            bx, by = tracker.position_2d
+            hx1, hy1, hx2, hy2 = hoop_det.bbox
+            if hx1 <= bx <= hx2 and hy1 <= by <= hy2:
+                self._dbg_was_in_2d_bbox = True
+                self._dbg_min_2d_dist = 0.0
+            else:
+                cx, cy = (hx1+hx2)//2, (hy1+hy2)//2
+                d2 = float(np.sqrt((bx-cx)**2 + (by-cy)**2))
+                if d2 < self._dbg_min_2d_dist:
+                    self._dbg_min_2d_dist = d2
+
         # Arc height
         self._current.arc_height_m = max(
             0.0, self._apex_y3d - float(self._current.release_pos[1])
@@ -227,6 +283,12 @@ class ShotDetector:
 
         if ((ball_below_hoop or ball_falling_no_hoop or arc_timeout)
                 and self._arc_frames >= config.ARC_MIN_FRAMES):
+            if ball_below_hoop:
+                self._dbg_classify_reason = "arc terminated: ball >0.5 m below hoop in 3D"
+            elif arc_timeout:
+                self._dbg_classify_reason = f"arc terminated: timeout at {self._arc_frames} frames"
+            else:
+                self._dbg_classify_reason = "arc terminated: falling (no hoop info)"
             return self._finalise(Outcome.MISS, frame_idx)
 
         return None
@@ -294,24 +356,32 @@ class ShotDetector:
             if (ball_vel is not None
                 and float(ball_vel[1]) > 0.5
                 and frames_since_entry >= 1):
+                self._dbg_classify_reason = f"3D rim bounce (vy={float(ball_vel[1]):.2f}>0.5 after entry)"
                 return Outcome.MISS
 
             # Slipped sideways out of cylinder while still at hoop height
             if (not in_cylinder
                 and frames_since_entry >= 2
                 and ball_y > hoop_y - 0.3):
+                self._dbg_classify_reason = f"3D slipped sideways (horiz_dist={horiz_dist:.2f}>{config.MAKE_CYLINDER_RADIUS:.2f})"
                 return Outcome.MISS
 
             # Cleared through the bottom of the hoop
             if ball_y < hoop_y - 0.4:
+                self._dbg_classify_reason = "3D cleared bottom of hoop"
                 return Outcome.MAKE
 
             # Held inside cylinder for several descending frames → MAKE
             if frames_since_entry >= 6 and in_cylinder and descending:
+                self._dbg_classify_reason = "3D held in cylinder ≥6 descending frames"
                 return Outcome.MAKE
 
         # Never entered cylinder, but ball passed well below hoop → MISS
         if ball_y < hoop_y - 0.4 and self._cylinder_entry_frame < 0:
+            self._dbg_classify_reason = (
+                f"3D below hoop without cylinder entry "
+                f"(min_horiz={self._dbg_min_horiz_dist:.2f}>{config.MAKE_CYLINDER_RADIUS:.2f})"
+            )
             return Outcome.MISS
 
         return Outcome.PENDING
@@ -336,6 +406,7 @@ class ShotDetector:
         # Expand hoop bbox slightly
         pad = 20
         if (hx1-pad <= bx <= hx2+pad) and (hy1-pad <= by <= hy2+pad):
+            self._dbg_classify_reason = "2D ball inside padded hoop bbox while descending"
             return Outcome.MAKE
 
         return Outcome.PENDING
@@ -345,6 +416,10 @@ class ShotDetector:
     def _finalise(self, outcome: Outcome, frame_idx: int) -> ShotEvent:
         self._current.outcome       = outcome
         self._current.outcome_frame = frame_idx
+
+        if config.DEBUG_SHOT_DETECTION:
+            self._print_debug(outcome, frame_idx)
+
         self._state                 = _ArcState.IDLE
         self._cooldown              = config.SHOT_COOLDOWN_FRAMES
         self._cylinder_entry_frame  = -1
@@ -353,3 +428,43 @@ class ShotDetector:
         self._current = None
         self.completed_shots.append(shot)
         return shot
+
+    def _print_debug(self, outcome: Outcome, frame_idx: int) -> None:
+        s = self._current
+        rel = s.release_pos
+        vel = s.release_vel
+        cyl = self._cylinder_entry_frame
+        descend = "descending" if self._dbg_min_horiz_descending else "ascending/level"
+
+        if self._dbg_was_in_2d_bbox:
+            bbox_line = "ball entered hoop bbox at some frame"
+        else:
+            bbox_line = f"ball never inside hoop bbox (closest 2D = {self._dbg_min_2d_dist:.0f} px)"
+
+        if self._dbg_hoop_3d is not None:
+            hoop_line = f"hoop @ ({self._dbg_hoop_3d[0]:.2f}, {self._dbg_hoop_3d[1]:.2f}, {self._dbg_hoop_3d[2]:.2f})"
+        else:
+            hoop_line = "hoop 3D not available"
+
+        if self._dbg_min_horiz_dist == float("inf"):
+            min_horiz_line = "no 3D ball/hoop samples during arc"
+        else:
+            min_horiz_line = (
+                f"min 3D horiz = {self._dbg_min_horiz_dist:.2f} m "
+                f"@ frame {self._dbg_min_horiz_frame} ({descend}); "
+                f"cylinder = {config.MAKE_CYLINDER_RADIUS:.2f} m"
+            )
+
+        print(
+            f"\n[Shot {s.shot_id}] {outcome.value.upper()} at frame {frame_idx}\n"
+            f"  trigger: frame {s.trigger_frame}, method {self._dbg_trigger_method}, "
+            f"angle {s.release_angle_deg:+.1f}°, speed {s.release_speed_mps:.1f} m/s\n"
+            f"  release pos: ({rel[0]:.2f}, {rel[1]:.2f}, {rel[2]:.2f})  "
+            f"vel: ({vel[0]:+.1f}, {vel[1]:+.1f}, {vel[2]:+.1f})\n"
+            f"  {hoop_line}\n"
+            f"  {min_horiz_line}\n"
+            f"  cylinder entry: "
+            f"{'frame ' + str(s.trigger_frame + cyl) if cyl >= 0 else 'never'}\n"
+            f"  2D: {bbox_line}\n"
+            f"  reason: {self._dbg_classify_reason}\n"
+        )
