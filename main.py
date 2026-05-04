@@ -1,17 +1,22 @@
 """Process a ZED SVO file through the basketball analytics pipeline.
 
 CLI usage:
-    python main.py svo_files/my_session.svo
+    python main.py svo_files/my_session.svo --label tensorrt_v3
 
 Programmatic usage (called by Flask):
     from main import process_svo
-    result = process_svo("svo_files/my_session.svo", progress_cb=callback)
+    result = process_svo("svo_files/my_session.svo", label="v1", progress_cb=callback)
+
+Output layout:
+    outputs/videos/<svo_stem>__<label>.mp4              ← all annotated MP4s, flat
+    outputs/data/<svo_stem>__<label>/{analytics.json, shots.csv, traces.json}
 """
 from __future__ import annotations
 
 import argparse
 import json
 import time
+from datetime import datetime
 from pathlib import Path
 from typing import Callable, Optional
 
@@ -25,23 +30,37 @@ from pipeline import (
 from pipeline import config
 
 
+def _default_label() -> str:
+    return datetime.now().strftime("%Y-%m-%d_%H-%M")
+
+
 def process_svo(
     svo_path: str,
+    label:    Optional[str] = None,
     progress_cb: Optional[Callable[[float, str], None]] = None,
 ) -> dict:
     """Run the full pipeline on an SVO file.
 
     Args:
         svo_path:    Path to the .svo file.
+        label:       Tag for this run; appears in output filenames.
+                     Defaults to a timestamp if not provided.
         progress_cb: Optional callback(fraction_done, status_message).
 
     Returns:
-        Dict with keys: output_dir, analytics_json, video_path, summary.
+        Dict with keys: session_id, video_path, analytics_json, traces_json, summary.
     """
-    svo_path  = Path(svo_path)
-    stem      = svo_path.stem
-    out_dir   = config.OUTPUT_DIR / stem
-    out_dir.mkdir(parents=True, exist_ok=True)
+    svo_path = Path(svo_path)
+    stem     = svo_path.stem
+    label    = (label or _default_label()).strip()
+    session  = f"{stem}__{label}"
+
+    videos_dir = config.OUTPUT_DIR / "videos"
+    data_dir   = config.OUTPUT_DIR / "data" / session
+    videos_dir.mkdir(parents=True, exist_ok=True)
+    data_dir.mkdir(parents=True, exist_ok=True)
+
+    video_path = videos_dir / f"{session}.mp4"
 
     def _cb(frac: float, msg: str = ""):
         if progress_cb:
@@ -62,7 +81,6 @@ def process_svo(
     annotator = Annotator(frame_width=reader.info.width, frame_height=reader.info.height)
 
     # ── video writer ──────────────────────────────────────────────────────────
-    video_path = out_dir / "annotated.mp4"
     fourcc     = cv2.VideoWriter_fourcc(*"mp4v")
     writer     = cv2.VideoWriter(
         str(video_path), fourcc,
@@ -134,11 +152,11 @@ def process_svo(
         writer.release()
 
     # ── save analytics ────────────────────────────────────────────────────────
-    paths   = analytics.save(out_dir)
+    paths   = analytics.save(data_dir)
     summary = analytics.summary()
 
     # Save Plotly trace data for the web UI
-    traces_path = out_dir / "traces.json"
+    traces_path = data_dir / "traces.json"
     with open(traces_path, "w") as f:
         json.dump(analytics.plotly_traces(reader.info.width, reader.info.height), f)
 
@@ -149,10 +167,11 @@ def process_svo(
     print(f"  Shots detected : {summary['total_shots']}")
     print(f"  Makes / Misses : {summary['makes']} / {summary['misses']}")
     print(f"  FG%            : {summary['fg_pct']}%")
-    print(f"  Output         : {out_dir}")
+    print(f"  Video          : {video_path}")
+    print(f"  Data           : {data_dir}")
 
     return {
-        "output_dir":    str(out_dir),
+        "session_id":    session,
         "video_path":    str(video_path),
         "analytics_json": str(paths["json"]),
         "traces_json":   str(traces_path),
@@ -165,6 +184,11 @@ def process_svo(
 def _cli():
     parser = argparse.ArgumentParser(description="Basketball SVO analytics pipeline")
     parser.add_argument("svo", help="Path to the .svo file")
+    parser.add_argument(
+        "--label",
+        help="Tag for this run; shows up in output filenames. "
+             "Defaults to a timestamp if omitted.",
+    )
     args = parser.parse_args()
 
     def _print_progress(frac: float, msg: str):
@@ -173,7 +197,7 @@ def _cli():
         bar     = "█" * filled + "░" * (bar_len - filled)
         print(f"\r[{bar}] {frac*100:5.1f}%  {msg:<40}", end="", flush=True)
 
-    process_svo(args.svo, progress_cb=_print_progress)
+    process_svo(args.svo, label=args.label, progress_cb=_print_progress)
     print()   # newline after progress bar
 
 

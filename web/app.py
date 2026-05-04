@@ -19,6 +19,7 @@ import queue
 import threading
 import time
 import uuid
+from datetime import datetime
 from pathlib import Path
 
 from flask import (
@@ -59,13 +60,23 @@ def _list_svo_files():
     return sorted([f.name for f in svo_dir.glob("*.svo")])
 
 
+def _flask_default_label() -> str:
+    """Default label for runs kicked off from the web UI without one."""
+    return datetime.now().strftime("%Y-%m-%d_%H-%M")
+
+
 def _list_results():
-    """Return previously processed sessions that have analytics.json."""
-    out = config.OUTPUT_DIR
-    if not out.exists():
+    """Return previously processed sessions that have analytics.json.
+
+    Sessions live under outputs/data/<svo_stem>__<label>/.
+    """
+    data_root = config.OUTPUT_DIR / "data"
+    if not data_root.exists():
         return []
     sessions = []
-    for d in sorted(out.iterdir()):
+    for d in sorted(data_root.iterdir()):
+        if not d.is_dir():
+            continue
         j = d / "analytics.json"
         if j.exists():
             try:
@@ -80,7 +91,7 @@ def _list_results():
     return sessions
 
 
-def _run_job(job_id: str, svo_path: str) -> None:
+def _run_job(job_id: str, svo_path: str, label: str) -> None:
     """Worker function executed in a background thread."""
     q = _jobs[job_id]["queue"]
 
@@ -94,7 +105,7 @@ def _run_job(job_id: str, svo_path: str) -> None:
         with _jobs_lock:
             _jobs[job_id]["status"] = "running"
 
-        result = process_svo(svo_path, progress_cb=_progress)
+        result = process_svo(svo_path, label=label, progress_cb=_progress)
 
         with _jobs_lock:
             _jobs[job_id]["status"]   = "done"
@@ -130,6 +141,7 @@ def api_files():
 def api_process():
     data     = request.get_json(force=True)
     filename = data.get("filename", "").strip()
+    label    = (data.get("label") or "").strip() or _flask_default_label()
 
     if not filename:
         return jsonify({"error": "No filename provided"}), 400
@@ -138,8 +150,8 @@ def api_process():
     if not svo_path.exists():
         return jsonify({"error": f"File not found: {filename}"}), 404
 
-    # Use the stem as job_id so results are stable across calls
-    job_id = svo_path.stem
+    # job_id matches the on-disk session folder name
+    job_id = f"{svo_path.stem}__{label}"
 
     with _jobs_lock:
         existing = _jobs.get(job_id)
@@ -153,9 +165,10 @@ def api_process():
             "result":   None,
             "queue":    queue.Queue(),
             "svo_path": str(svo_path),
+            "label":    label,
         }
 
-    t = threading.Thread(target=_run_job, args=(job_id, str(svo_path)), daemon=True)
+    t = threading.Thread(target=_run_job, args=(job_id, str(svo_path), label), daemon=True)
     t.start()
 
     return jsonify({"job_id": job_id, "status": "started"}), 202
@@ -191,7 +204,7 @@ def api_status_sse(job_id: str):
 
 @app.route("/results/<job_id>")
 def results_page(job_id: str):
-    out_dir = config.OUTPUT_DIR / job_id
+    out_dir = config.OUTPUT_DIR / "data" / job_id
     if not out_dir.exists():
         abort(404)
 
@@ -220,8 +233,7 @@ def results_page(job_id: str):
 
 @app.route("/api/results/<job_id>")
 def api_results(job_id: str):
-    out_dir = config.OUTPUT_DIR / job_id
-    p = out_dir / "analytics.json"
+    p = config.OUTPUT_DIR / "data" / job_id / "analytics.json"
     if not p.exists():
         abort(404)
     with open(p) as f:
@@ -230,7 +242,7 @@ def api_results(job_id: str):
 
 @app.route("/video/<job_id>")
 def serve_video(job_id: str):
-    video = config.OUTPUT_DIR / job_id / "annotated.mp4"
+    video = config.OUTPUT_DIR / "videos" / f"{job_id}.mp4"
     if not video.exists():
         abort(404)
     return send_file(str(video), mimetype="video/mp4", conditional=True)
