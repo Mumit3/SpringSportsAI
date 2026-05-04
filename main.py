@@ -15,6 +15,8 @@ from __future__ import annotations
 
 import argparse
 import json
+import shutil
+import subprocess
 import time
 from datetime import datetime
 from pathlib import Path
@@ -32,6 +34,52 @@ from pipeline import config
 
 def _default_label() -> str:
     return datetime.now().strftime("%Y-%m-%d_%H-%M")
+
+
+def _transcode_for_browser(video_path: Path, progress_cb=None) -> None:
+    """Re-encode an MP4 to browser-compatible H.264 + faststart, in-place.
+
+    OpenCV on Jetson typically doesn't ship with H.264 — the writer falls back
+    to mp4v, which HTML5 <video> can't decode. ffmpeg fixes it. If ffmpeg
+    isn't on PATH the function returns silently (file stays as written).
+    """
+    if shutil.which("ffmpeg") is None:
+        print("[Pipeline] ffmpeg not installed — skipping browser transcode. "
+              "Install with: sudo apt install ffmpeg")
+        return
+
+    if progress_cb:
+        progress_cb(0.99, "Transcoding for browser…")
+
+    tmp = video_path.with_suffix(".h264.mp4")
+    cmd = [
+        "ffmpeg", "-y",
+        "-hide_banner", "-loglevel", "error",
+        "-i", str(video_path),
+        "-c:v", "libx264",
+        "-profile:v", "baseline",   # widest browser support
+        "-level", "3.0",
+        "-pix_fmt", "yuv420p",      # required for browser HTML5 video
+        "-preset", "fast",
+        "-crf", "23",
+        "-movflags", "+faststart",  # moov atom at start so streaming works
+        "-an",                      # drop audio (none anyway)
+        str(tmp),
+    ]
+    try:
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
+        if result.returncode != 0:
+            print(f"[Pipeline] ffmpeg transcode failed: {result.stderr.strip()[:300]}")
+            tmp.unlink(missing_ok=True)
+            return
+        tmp.replace(video_path)
+        print(f"[Pipeline] Transcoded MP4 to browser-compatible H.264")
+    except subprocess.TimeoutExpired:
+        print("[Pipeline] ffmpeg transcode timed out — leaving original file.")
+        tmp.unlink(missing_ok=True)
+    except Exception as e:
+        print(f"[Pipeline] ffmpeg transcode error: {e}")
+        tmp.unlink(missing_ok=True)
 
 
 def process_svo(
@@ -164,6 +212,9 @@ def process_svo(
                     _cb(frac, f"Frame {idx+1}/{total}  ({fps_est:.1f} fps)")
     finally:
         writer.release()
+
+    # ── transcode to browser-compatible H.264 (no-op if ffmpeg missing) ───────
+    _transcode_for_browser(video_path, progress_cb=_cb)
 
     # ── save analytics ────────────────────────────────────────────────────────
     paths   = analytics.save(data_dir)
