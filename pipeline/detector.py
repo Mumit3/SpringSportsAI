@@ -70,10 +70,19 @@ class BallHoopDetector:
             print(f"[Detector] Loading custom model: {custom}")
             self._model      = YOLO(str(custom))
             self._model_type = "custom"
-        else:
-            print(f"[Detector] Custom model not found. Using COCO {config.YOLO_FALLBACK}")
-            self._model      = YOLO(config.YOLO_FALLBACK)
+            return
+
+        # Prefer TensorRT engine on Jetson (3-5× faster than .pt with same accuracy).
+        engine_path = Path(config.YOLO_FALLBACK).with_suffix(".engine")
+        if config.USE_TENSORRT and engine_path.exists():
+            print(f"[Detector] Loading TensorRT engine: {engine_path}")
+            self._model      = YOLO(str(engine_path))
             self._model_type = "coco"
+            return
+
+        print(f"[Detector] Using COCO {config.YOLO_FALLBACK}")
+        self._model      = YOLO(config.YOLO_FALLBACK)
+        self._model_type = "coco"
 
     # ── public API ────────────────────────────────────────────────────────────
 
@@ -99,7 +108,7 @@ class BallHoopDetector:
             return None
 
         conf = conf_override or config.BALL_CONF_NORMAL
-        results = self._model(frame, verbose=False, conf=conf)[0]
+        results = self._model(frame, verbose=False, conf=conf, imgsz=config.YOLO_IMGSZ)[0]
 
         best: Optional[Detection] = None
 
@@ -199,7 +208,7 @@ class BallHoopDetector:
     def _detect_hoop_yolo(self, frame: np.ndarray) -> Optional[Detection]:
         if self._model is None:
             return None
-        results = self._model(frame, verbose=False, conf=config.HOOP_CONF)[0]
+        results = self._model(frame, verbose=False, conf=config.HOOP_CONF, imgsz=config.YOLO_IMGSZ)[0]
         if self._model_type == "custom":
             return self._best_from_results(results, config.CUSTOM_HOOP_NAMES, config.HOOP_CONF)
         return None   # COCO has no hoop class
