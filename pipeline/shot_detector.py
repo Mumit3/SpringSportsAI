@@ -157,27 +157,22 @@ class ShotDetector:
 
         triggered = False
 
-        vel3d = tracker.velocity_3d
-        vy_3d    = float(vel3d[1]) if vel3d is not None else None
-        horiz_3d = float(np.linalg.norm([vel3d[0], vel3d[2]])) if vel3d is not None else None
-
-        # Method A: 3-D arc — upward velocity AND meaningful horizontal motion.
-        # The horizontal-motion gate filters vertical bounces and warm-up tosses
-        # that otherwise look like a release.
-        if vel3d is not None:
-            if vy_3d > config.ARC_VELOCITY_THRESHOLD and horiz_3d > 0.5:
+        # Method A: 3-D arc — upward Kalman velocity exceeds threshold
+        if tracker.velocity_3d is not None:
+            vy = float(tracker.velocity_3d[1])
+            if vy > config.ARC_VELOCITY_THRESHOLD:
                 triggered = True
 
-        # Method B: 2-D pixel rise. Validate against 3-D velocity if available —
-        # the ball can appear to "rise" in the image when YOLO swaps to a different
-        # object at higher y (e.g., a held ball mid-frame), producing a false
-        # trigger on a ball that's actually descending in 3-D. This was the root
-        # cause of the shot-1 false MAKE with release angle ≈ −71°.
+        # Method B: 2-D pixel rise. Validate with 3-D vy if available — a YOLO
+        # detection swap to a higher-y object can spoof a 2-D rise on a ball
+        # that's actually descending in 3-D (this was the root cause of the
+        # shot-1 false MAKE with release angle ≈ −71°).
         if not triggered and len(self._ball_y_window) >= config.PIXEL_RISE_WINDOW:
             y_vals = self._ball_y_window
             rise_px = y_vals[-1] - y_vals[0]
             if -rise_px / self._fh > config.PIXEL_RISE_THRESHOLD:
-                if vel3d is None or (vy_3d > -0.5 and horiz_3d > 0.5):
+                vel3d = tracker.velocity_3d
+                if vel3d is None or float(vel3d[1]) > -0.5:
                     triggered = True
 
         if not triggered:
