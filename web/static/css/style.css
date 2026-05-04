@@ -68,6 +68,22 @@ code {
   color: var(--text-muted);
 }
 
+/* Top-bar nav links */
+.site-nav { display: flex; gap: 0.25rem; margin-left: 1rem; }
+.nav-link {
+  font-size: 0.88rem;
+  color: var(--text-muted);
+  padding: 0.35rem 0.85rem;
+  border-radius: 6px;
+  text-decoration: none;
+  transition: color 0.15s, background 0.15s;
+}
+.nav-link:hover {
+  color: var(--text);
+  background: var(--bg);
+  text-decoration: none;
+}
+
 /* ── Main ──────────────────────────────────────────────────────────────────── */
 .main-content {
   flex: 1;
@@ -102,6 +118,25 @@ code {
   margin-bottom: 1.2rem;
   padding-bottom: 0.6rem;
   border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+/* Leading-dot bullet for card titles (like the GPIO panel screenshot). */
+.title-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 99px;
+  background: var(--orange);
+  display: inline-block;
+  flex-shrink: 0;
+}
+.title-dot.live    { background: var(--red);    box-shadow: 0 0 0 4px rgba(239,68,68,0.18); animation: pulse 1.4s ease-in-out infinite; }
+.title-dot.success { background: var(--green); }
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.5; }
 }
 
 /* ── Index page ────────────────────────────────────────────────────────────── */
@@ -305,6 +340,181 @@ code {
   align-self: flex-start;
 }
 .goto-btn:hover { border-color: var(--orange); color: var(--orange); }
+
+/* ── Forms ─────────────────────────────────────────────────────────────────── */
+.form-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 1.25rem;
+  margin-bottom: 1.25rem;
+}
+.form-row { display: flex; flex-direction: column; gap: 0.4rem; }
+.form-label {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-weight: 600;
+}
+.form-input {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  padding: 0.6rem 0.85rem;
+  font-size: 0.92rem;
+  font-family: inherit;
+  transition: border-color 0.15s, box-shadow 0.15s;
+  width: 100%;
+}
+.form-input:focus {
+  outline: none;
+  border-color: var(--orange);
+  box-shadow: 0 0 0 3px rgba(249,115,22,0.18);
+}
+.form-input-hidden { display: none; }
+select.form-input {
+  appearance: none;
+  background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg width='12' height='8' viewBox='0 0 12 8' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%238b949e' stroke-width='1.5' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.85rem center;
+  padding-right: 2rem;
+}
+.form-textarea {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  padding: 0.7rem 0.9rem;
+  font-size: 0.92rem;
+  font-family: inherit;
+  width: 100%;
+  min-height: 120px;
+  resize: vertical;
+  margin-bottom: 0.75rem;
+}
+.form-textarea:focus {
+  outline: none;
+  border-color: var(--orange);
+  box-shadow: 0 0 0 3px rgba(249,115,22,0.18);
+}
+.form-hint { font-size: 0.78rem; color: var(--text-muted); }
+.form-actions { display: flex; gap: 0.6rem; align-items: center; flex-wrap: wrap; }
+
+/* ── Buttons ───────────────────────────────────────────────────────────────── */
+.btn {
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text);
+  border-radius: 8px;
+  padding: 0.55rem 1.1rem;
+  font-size: 0.9rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s, color 0.15s, transform 0.05s;
+  font-family: inherit;
+}
+.btn:hover { border-color: var(--orange); }
+.btn:active { transform: translateY(1px); }
+.btn:disabled { opacity: 0.55; cursor: not-allowed; }
+.btn-small  { padding: 0.4rem 0.85rem; font-size: 0.82rem; }
+.btn-primary {
+  background: linear-gradient(180deg, var(--orange), var(--orange-dim));
+  color: #fff;
+  border-color: transparent;
+  font-weight: 600;
+}
+.btn-primary:hover { filter: brightness(1.08); border-color: transparent; }
+.btn-secondary { background: var(--bg); color: var(--text-muted); }
+.btn-stop {
+  background: var(--red);
+  color: #fff;
+  border-color: transparent;
+  font-weight: 600;
+}
+.btn-stop:hover { filter: brightness(1.08); border-color: transparent; }
+.btn-danger {
+  background: var(--bg);
+  color: var(--red);
+  border-color: rgba(239,68,68,0.4);
+}
+.btn-danger:hover { background: rgba(239,68,68,0.1); border-color: var(--red); }
+
+/* ── Pill badges (red/green/blue tinted, like the screenshot) ───────────── */
+.badge {
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  padding: 3px 10px;
+  border-radius: 99px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text-muted);
+}
+.badge-live { background: rgba(239,68,68,0.12); border-color: rgba(239,68,68,0.4); color: var(--red); }
+.badge-ok   { background: rgba(34,197,94,0.12); border-color: rgba(34,197,94,0.4);  color: var(--green); }
+
+/* ── Record page ──────────────────────────────────────────────────────────── */
+.preview-wrap {
+  background: #000;
+  border-radius: 8px;
+  overflow: hidden;
+  display: flex;
+  justify-content: center;
+  margin-bottom: 1.25rem;
+  border: 1px solid var(--border);
+}
+#preview-img { max-width: 100%; max-height: 540px; display: block; }
+
+/* ── Index file grid (recursive scan UI) ──────────────────────────────────── */
+.file-btn {
+  flex-direction: row;
+  align-items: flex-start;
+  text-align: left;
+  min-width: 260px;
+}
+.file-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+.file-folder { font-size: 0.75rem; color: var(--text-muted); }
+
+/* ── Inline label prompt ──────────────────────────────────────────────────── */
+.label-prompt {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1rem 1.1rem;
+  margin-top: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+}
+.label-prompt.hidden { display: none; }
+
+/* ── Generic hidden helper ────────────────────────────────────────────────── */
+.hidden { display: none !important; }
+
+/* ── Results-page session header (rename / delete) ────────────────────────── */
+.session-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 0.5rem;
+  flex-wrap: wrap;
+}
+.session-actions { display: flex; gap: 0.5rem; }
+
+.rename-row {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  margin-bottom: 1rem;
+  flex-wrap: wrap;
+}
+.rename-row .form-input { max-width: 380px; }
 
 /* ── Responsive ────────────────────────────────────────────────────────────── */
 @media (max-width: 640px) {

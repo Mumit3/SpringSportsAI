@@ -11,7 +11,22 @@
 
   <!-- ── Back link ──────────────────────────────────────────── -->
   <a href="/" class="back-link">← Back to sessions</a>
-  <h1 class="session-title">{{ job_id }}</h1>
+
+  <div class="session-header">
+    <h1 class="session-title" id="session-title">{{ job_id }}</h1>
+    <div class="session-actions">
+      <button class="btn btn-secondary btn-small" id="rename-btn">✎ Rename</button>
+      <button class="btn btn-danger btn-small"    id="delete-btn">🗑 Delete</button>
+    </div>
+  </div>
+
+  <!-- Inline rename row (hidden until clicked) -->
+  <div class="rename-row hidden" id="rename-row">
+    <input id="rename-input" class="form-input" type="text"
+           value="" placeholder="new label" autocomplete="off"/>
+    <button class="btn btn-primary btn-small" id="rename-save">Save</button>
+    <button class="btn btn-secondary btn-small" id="rename-cancel">Cancel</button>
+  </div>
 
   <!-- ── Summary bar ────────────────────────────────────────── -->
   <div class="summary-bar">
@@ -51,12 +66,23 @@
 
   <!-- ── Video player ────────────────────────────────────────── -->
   <section class="card">
-    <h2 class="card-title">Annotated Video</h2>
+    <h2 class="card-title"><span class="title-dot"></span>Annotated Video</h2>
     <div class="video-wrap">
       <video id="main-video" controls preload="metadata"
              src="/video/{{ job_id }}">
         Your browser does not support HTML5 video.
       </video>
+    </div>
+  </section>
+
+  <!-- ── Notes ──────────────────────────────────────────────── -->
+  <section class="card">
+    <h2 class="card-title"><span class="title-dot"></span>Notes</h2>
+    <textarea id="notes-area" class="form-textarea"
+              placeholder="Free-text notes about this session…">{{ notes }}</textarea>
+    <div class="form-actions">
+      <button class="btn btn-primary btn-small" id="notes-save">Save</button>
+      <span class="hint" id="notes-status"></span>
     </div>
   </section>
 
@@ -140,6 +166,98 @@
       video.scrollIntoView({ behavior: 'smooth', block: 'center' });
       video.play();
     });
+  });
+
+  // ── Session management ────────────────────────────────────────────────
+  const jobId       = {{ job_id|tojson }};
+  const renameBtn   = document.getElementById('rename-btn');
+  const renameRow   = document.getElementById('rename-row');
+  const renameInput = document.getElementById('rename-input');
+  const renameSave  = document.getElementById('rename-save');
+  const renameCancel= document.getElementById('rename-cancel');
+  const deleteBtn   = document.getElementById('delete-btn');
+  const notesArea   = document.getElementById('notes-area');
+  const notesSave   = document.getElementById('notes-save');
+  const notesStatus = document.getElementById('notes-status');
+
+  // Rename
+  renameBtn.addEventListener('click', () => {
+    const idx = jobId.lastIndexOf('__');
+    renameInput.value = idx >= 0 ? jobId.slice(idx + 2) : jobId;
+    renameRow.classList.remove('hidden');
+    renameInput.focus();
+    renameInput.select();
+  });
+  renameCancel.addEventListener('click', () => {
+    renameRow.classList.add('hidden');
+  });
+  renameSave.addEventListener('click', async () => {
+    const newLabel = (renameInput.value || '').trim();
+    if (!newLabel) return;
+    renameSave.disabled = true;
+    try {
+      const r = await fetch(`/api/sessions/${encodeURIComponent(jobId)}/rename`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ label: newLabel }),
+      });
+      const data = await r.json();
+      if (!r.ok) {
+        alert(data.error || 'Rename failed');
+        renameSave.disabled = false;
+        return;
+      }
+      window.location.href = `/results/${encodeURIComponent(data.job_id)}`;
+    } catch (e) {
+      alert('Network error: ' + e);
+      renameSave.disabled = false;
+    }
+  });
+
+  // Delete
+  deleteBtn.addEventListener('click', async () => {
+    if (!confirm(`Delete this session?\n\n${jobId}\n\nThis removes the MP4 and all analytics. This cannot be undone.`)) {
+      return;
+    }
+    deleteBtn.disabled = true;
+    try {
+      const r = await fetch(`/api/sessions/${encodeURIComponent(jobId)}/delete`, {
+        method: 'POST',
+      });
+      if (r.ok) {
+        window.location.href = '/';
+      } else {
+        const data = await r.json().catch(() => ({}));
+        alert(data.error || 'Delete failed');
+        deleteBtn.disabled = false;
+      }
+    } catch (e) {
+      alert('Network error: ' + e);
+      deleteBtn.disabled = false;
+    }
+  });
+
+  // Notes
+  notesSave.addEventListener('click', async () => {
+    notesSave.disabled = true;
+    notesStatus.textContent = 'Saving…';
+    try {
+      const r = await fetch(`/api/sessions/${encodeURIComponent(jobId)}/notes`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ notes: notesArea.value }),
+      });
+      if (r.ok) {
+        notesStatus.textContent = 'Saved.';
+        setTimeout(() => { notesStatus.textContent = ''; }, 1500);
+      } else {
+        notesStatus.textContent = 'Error saving.';
+      }
+    } catch (e) {
+      notesStatus.textContent = 'Network error.';
+    } finally {
+      notesSave.disabled = false;
+    }
   });
 </script>
 <script src="{{ url_for('static', filename='js/main.js') }}"></script>

@@ -1,27 +1,54 @@
 {% extends "base.html" %}
-{% block title %}Select Session — Basketball Analytics{% endblock %}
+{% block title %}Sessions — Basketball Analytics{% endblock %}
 
 {% block content %}
 <div class="page-index">
 
   <!-- ── Process new session ─────────────────────────────────── -->
   <section class="card">
-    <h2 class="card-title">Process SVO File</h2>
+    <h2 class="card-title">
+      <span class="title-dot"></span>Process SVO File
+    </h2>
 
     {% if svo_files %}
     <div class="file-grid">
-      {% for name in svo_files %}
-      <button class="file-btn" data-filename="{{ name }}">
+      {% for f in svo_files %}
+      <button class="file-btn"
+              data-path="{{ f.path }}"
+              data-name="{{ f.name }}">
         <span class="file-icon">📹</span>
-        <span class="file-name">{{ name }}</span>
+        <span class="file-meta">
+          <span class="file-name">{{ f.name }}</span>
+          <span class="file-folder">{{ f.folder }} · {{ f.size_mb }} MB</span>
+        </span>
       </button>
       {% endfor %}
     </div>
     {% else %}
-    <p class="hint">No .svo files found in <code>svo_files/</code>. Copy your recordings there and refresh.</p>
+    <p class="hint">
+      No <code>.svo</code> / <code>.svo2</code> files found anywhere under the
+      project. <a href="/record">Record one</a> or copy a recording into
+      <code>svo_files/</code>.
+    </p>
     {% endif %}
 
-    <!-- Progress panel (hidden until processing starts) -->
+    <!-- Inline label prompt -->
+    <div class="label-prompt hidden" id="label-prompt">
+      <div class="form-row">
+        <label class="form-label" for="process-label">Label this run</label>
+        <input id="process-label" class="form-input" type="text"
+               placeholder="e.g. tensorrt_v3" autocomplete="off"/>
+        <div class="form-hint">
+          Used in the output MP4 filename. Default: timestamp.
+        </div>
+      </div>
+      <div class="form-actions">
+        <button id="confirm-btn" class="btn btn-primary">▶ Start</button>
+        <button id="cancel-btn" class="btn btn-secondary">Cancel</button>
+      </div>
+    </div>
+
+    <!-- Progress panel -->
     <div id="progress-panel" class="progress-panel hidden">
       <div class="progress-info">
         <span id="progress-msg">Starting…</span>
@@ -36,7 +63,9 @@
   <!-- ── Previous sessions ──────────────────────────────────── -->
   {% if sessions %}
   <section class="card">
-    <h2 class="card-title">Previous Sessions</h2>
+    <h2 class="card-title">
+      <span class="title-dot"></span>Previous Sessions
+    </h2>
     <div class="sessions-list">
       {% for s in sessions %}
       {% set sm = s.summary %}

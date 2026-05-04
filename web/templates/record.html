@@ -1,0 +1,108 @@
+{% extends "base.html" %}
+{% block title %}Record — Basketball Analytics{% endblock %}
+
+{% block content %}
+<div class="page-record">
+
+  {% if not recorder_ok %}
+  <section class="card">
+    <h2 class="card-title"><span class="title-dot"></span>Recorder Unavailable</h2>
+    <p class="hint">
+      The ZED Python bindings (<code>pyzed</code>) aren't installed in this environment.
+      Live recording requires the Jetson with the ZED SDK installed. You can still
+      <a href="/">process existing SVO files</a>.
+    </p>
+  </section>
+  {% else %}
+
+  <!-- ── Setup form (visible before recording) ─────────────────────── -->
+  <section class="card" id="setup-card">
+    <h2 class="card-title"><span class="title-dot"></span>New Recording</h2>
+
+    <div class="form-grid">
+      <div class="form-row">
+        <label class="form-label" for="record-label">Filename label</label>
+        <input id="record-label" class="form-input" type="text"
+               placeholder="e.g. freethrows_session1" autocomplete="off"/>
+        <div class="form-hint">Saved as <code>&lt;label&gt;.svo2</code></div>
+      </div>
+
+      <div class="form-row">
+        <label class="form-label" for="record-resolution">Resolution</label>
+        <select id="record-resolution" class="form-input">
+          <option value="HD2K|15">HD2K · 2208 × 1242 @ 15 fps</option>
+          <option value="HD1080|30" selected>HD1080 · 1920 × 1080 @ 30 fps</option>
+          <option value="HD720|60">HD720 · 1280 × 720 @ 60 fps</option>
+        </select>
+        <div class="form-hint">Higher resolution = sharper ball, fewer fps</div>
+      </div>
+
+      <div class="form-row">
+        <label class="form-label" for="record-folder">Save folder</label>
+        <select id="record-folder" class="form-input">
+          {% for f in folders %}
+          <option value="{{ f }}" {% if f == 'svo_files' %}selected{% endif %}>{{ f }}</option>
+          {% endfor %}
+          <option value="__custom__">+ New folder…</option>
+        </select>
+        <input id="record-folder-custom" class="form-input form-input-hidden"
+               type="text" placeholder="new_folder_name" autocomplete="off"/>
+        <div class="form-hint">Inside <code>SpringSportsAI/</code>, max 60 s</div>
+      </div>
+    </div>
+
+    <div class="form-actions">
+      <button id="start-btn" class="btn btn-primary">● Start Recording</button>
+    </div>
+  </section>
+
+  <!-- ── Live recording (hidden until started) ─────────────────────── -->
+  <section class="card hidden" id="live-card">
+    <h2 class="card-title">
+      <span class="title-dot live"></span>
+      <span id="live-status">Recording</span>
+      <span class="badge badge-live" id="live-elapsed">0s / 60s</span>
+    </h2>
+
+    <div class="preview-wrap">
+      <img id="preview-img" src="/api/record/preview" alt="Live ZED feed"/>
+    </div>
+
+    <div class="form-actions">
+      <button id="stop-btn" class="btn btn-stop">■ Stop</button>
+    </div>
+  </section>
+
+  <!-- ── After-record dialog (hidden until done) ───────────────────── -->
+  <section class="card hidden" id="done-card">
+    <h2 class="card-title"><span class="title-dot success"></span>Recording Saved</h2>
+    <p class="hint">
+      Saved to <code id="done-svo-path">…</code>
+    </p>
+
+    <div class="form-actions">
+      <button id="process-btn" class="btn btn-primary">▶ Process Now</button>
+      <button id="record-again-btn" class="btn btn-secondary">↺ Record Again</button>
+    </div>
+
+    <!-- Inline label prompt for the "Process Now" path -->
+    <div class="form-row hidden" id="process-label-row" style="margin-top:1rem;">
+      <label class="form-label" for="process-label">Output label</label>
+      <input id="process-label" class="form-input" type="text"
+             placeholder="e.g. tensorrt_v3" autocomplete="off"/>
+      <div class="form-hint">
+        Used in the output MP4 filename. Default: timestamp.
+      </div>
+      <div class="form-actions" style="margin-top:0.75rem;">
+        <button id="process-confirm-btn" class="btn btn-primary">Process</button>
+      </div>
+    </div>
+  </section>
+
+  {% endif %}
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/record.js') }}"></script>
+{% endblock %}

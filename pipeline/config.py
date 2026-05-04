@@ -27,6 +27,13 @@ COORD_SYSTEM = "LEFT_HANDED_Y_UP"
 DEPTH_MIN   = 0.3        # metres
 DEPTH_MAX   = 20.0       # metres
 
+# ── Live recording (Flask UI) ────────────────────────────────────────────────
+RECORD_RESOLUTION       = "HD2K"   # default; UI lets user override
+RECORD_FPS              = 15       # default; clamped to camera limits per resolution
+RECORDING_MAX_SECONDS   = 60
+PREVIEW_MAX_WIDTH       = 800      # downscale MJPEG preview for browser bandwidth
+PREVIEW_JPEG_QUALITY    = 70
+
 # ── Detection thresholds ─────────────────────────────────────────────────────
 BALL_CONF_NORMAL = 0.35
 BALL_CONF_FLIGHT = 0.18   # lowered while ball is confirmed in-flight
