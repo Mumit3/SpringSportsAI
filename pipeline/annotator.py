@@ -184,21 +184,21 @@ class Annotator:
                         self._font, self._font_small, (230,230,230), 1, cv2.LINE_AA)
             y_start += 22
 
-    # ── version label (top-center) ────────────────────────────────────────────
+    # ── version label (top-right) ─────────────────────────────────────────────
 
     def _draw_version(self, frame: np.ndarray) -> None:
         text = self._version
         scale = 1.1
         thickness = 2
         (tw, th), _ = cv2.getTextSize(text, self._font, scale, thickness)
-        x = (self._fw - tw) // 2
+        x = self._fw - tw - 14
         y = th + 14
         # Shadow
         cv2.putText(frame, text, (x+2, y+2), self._font, scale, (0,0,0), thickness+2, cv2.LINE_AA)
         # Foreground
         cv2.putText(frame, text, (x, y), self._font, scale, (255,255,255), thickness, cv2.LINE_AA)
 
-    # ── shot result banner ────────────────────────────────────────────────────
+    # ── shot result: top-center label + left metrics column ──────────────────
 
     def _draw_shot_result(self, frame: np.ndarray) -> None:
         if self._last_outcome is None or self._last_metrics is None:
@@ -214,26 +214,29 @@ class Annotator:
             color  = config.COLOR_PENDING
             label  = "..."
 
+        # Big top-center label
+        scale = 2.4
+        thickness = 4
+        (tw, th), _ = cv2.getTextSize(label, self._font, scale, thickness)
+        x = (self._fw - tw) // 2
+        y = th + 20
+        cv2.putText(frame, label, (x+3, y+3),
+                    self._font, scale, (0,0,0), thickness+2, cv2.LINE_AA)
+        cv2.putText(frame, label, (x, y),
+                    self._font, scale, color, thickness, cv2.LINE_AA)
+
+        # Left metrics column (stacked below the HUD)
         m = self._last_metrics
-
-        # Semi-transparent background
-        overlay = frame.copy()
-        cv2.rectangle(overlay, (0, self._fh-120), (self._fw, self._fh), (20,20,20), -1)
-        cv2.addWeighted(overlay, 0.65, frame, 0.35, 0, frame)
-
-        # Big result label
-        cv2.putText(frame, label,
-                    (self._fw//2 - 80, self._fh - 70),
-                    self._font, 2.4, color, 4, cv2.LINE_AA)
-
-        # Metrics row
-        stats = (
-            f"Angle: {m.get('release_angle_deg',0):.1f}°  |  "
-            f"Arc: {m.get('arc_height_m',0):.2f} m  |  "
-            f"Dist: {m.get('shot_distance_m',0):.2f} m  |  "
-            f"Speed: {m.get('release_speed_mps',0):.1f} m/s"
-        )
-        tw, _ = cv2.getTextSize(stats, self._font, self._font_small, 1)
-        x_off = max(0, (self._fw - tw[0]) // 2)
-        cv2.putText(frame, stats, (x_off, self._fh - 20),
-                    self._font, self._font_small, (220, 220, 220), 1, cv2.LINE_AA)
+        metric_lines = [
+            f"Angle: {m.get('release_angle_deg',0):.1f} deg",
+            f"Arc:   {m.get('arc_height_m',0):.2f} m",
+            f"Dist:  {m.get('shot_distance_m',0):.2f} m",
+            f"Speed: {m.get('release_speed_mps',0):.1f} m/s",
+        ]
+        y_off = 130
+        for line in metric_lines:
+            cv2.putText(frame, line, (11, y_off+1),
+                        self._font, self._font_small, (0,0,0), 2, cv2.LINE_AA)
+            cv2.putText(frame, line, (10, y_off),
+                        self._font, self._font_small, (230,230,230), 1, cv2.LINE_AA)
+            y_off += 22
