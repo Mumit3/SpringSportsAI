@@ -81,12 +81,24 @@ def process_svo(
     annotator = Annotator(frame_width=reader.info.width, frame_height=reader.info.height)
 
     # ── video writer ──────────────────────────────────────────────────────────
-    fourcc     = cv2.VideoWriter_fourcc(*"mp4v")
-    writer     = cv2.VideoWriter(
-        str(video_path), fourcc,
+    # Try H.264 first (browser-friendly), fall back to mp4v if OpenCV's build
+    # doesn't have H.264 support. Browsers can't play raw mp4v in HTML5 video,
+    # so without H.264 the user has to download the MP4 to view it.
+    writer = cv2.VideoWriter(
+        str(video_path),
+        cv2.VideoWriter_fourcc(*"avc1"),
         reader.info.fps,
         (reader.info.width, reader.info.height),
     )
+    if not writer.isOpened():
+        print("[Pipeline] avc1 (H.264) unavailable in this OpenCV build, "
+              "falling back to mp4v — output may not play in browsers.")
+        writer = cv2.VideoWriter(
+            str(video_path),
+            cv2.VideoWriter_fourcc(*"mp4v"),
+            reader.info.fps,
+            (reader.info.width, reader.info.height),
+        )
 
     total     = reader.info.total_frames
     hoop_3d:  Optional[np.ndarray] = None
