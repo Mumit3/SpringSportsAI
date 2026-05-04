@@ -339,10 +339,13 @@ class ShotDetector:
             if frames_since_entry >= 6 and in_cylinder and descending:
                 return Outcome.MAKE
 
-        # NOTE: do NOT fire MISS here just because ball dropped below hoop
-        # without "entering the cylinder" — at long range the cylinder check
-        # is unreliable due to depth noise. The arc termination in
-        # _track_arc will mark MISS if no MAKE is detected anywhere.
+        # Ball passed clearly below hoop without entering cylinder → MISS.
+        # Threshold raised from 0.4 m to 0.7 m so the 2-D crossing check has
+        # more frames to fire MAKE before this short-circuits. At long range
+        # the cylinder entry test is unreliable due to depth noise.
+        if ball_y < hoop_y - 0.7 and self._cylinder_entry_frame < 0:
+            return Outcome.MISS
+
         return Outcome.PENDING
 
     def _classify_2d(
@@ -366,19 +369,25 @@ class ShotDetector:
 
         bx, by = tracker.position_2d
         hx1, hy1, hx2, hy2 = hoop_det.bbox
-        pad = 40
+        pad = 50
         rx1, ry1, rx2, ry2 = hx1-pad, hy1-pad, hx2+pad, hy2+pad
 
         # Current point inside padded bbox
         if rx1 <= bx <= rx2 and ry1 <= by <= ry2:
             return Outcome.MAKE
 
-        # Trajectory crossing — segment from previous to current ball position
-        if (self._current is not None
-                and len(self._current.trail_2d) >= 2):
-            px, py = self._current.trail_2d[-2]
-            if _segment_intersects_rect((px, py), (bx, by), (rx1, ry1, rx2, ry2)):
-                return Outcome.MAKE
+        # Trajectory crossing — check the last few segments of the shot trail.
+        # Looking back N segments catches makes where the ball was in flight
+        # the previous frame but our descending check delayed the result one
+        # frame, OR where YOLO briefly missed the ball mid-bbox.
+        if self._current is not None and len(self._current.trail_2d) >= 2:
+            trail = self._current.trail_2d
+            n_check = min(4, len(trail) - 1)
+            for i in range(len(trail) - 1 - n_check, len(trail) - 1):
+                if i < 0:
+                    continue
+                if _segment_intersects_rect(trail[i], trail[i+1], (rx1, ry1, rx2, ry2)):
+                    return Outcome.MAKE
 
         return Outcome.PENDING
 
