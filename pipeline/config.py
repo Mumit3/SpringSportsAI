@@ -77,8 +77,11 @@ PIXEL_RISE_THRESHOLD   = 0.10  # fraction of frame height risen in window
 PIXEL_RISE_WINDOW      = 8     # rolling frame window for 2D method
 SHOT_COOLDOWN_FRAMES   = 70    # minimum frames between detected shots
 
-# Make/miss: ball must pass through hoop plane within this radius (metres)
-MAKE_CYLINDER_RADIUS = 0.23
+# Make/miss: ball must pass through hoop plane within this radius (metres).
+# Real rim radius is 0.23 m, but yolov8s @ imgsz=1280 places ball/hoop bboxes a
+# few pixels different from yolov8n @ 640, which shifts the 3-D hoop center by
+# a few cm. 0.30 m absorbs that shift so makes still register.
+MAKE_CYLINDER_RADIUS = 0.30
 # How many frames after shot release to keep checking for make/miss
 MAKE_CHECK_FRAMES = 60
 
