@@ -157,18 +157,28 @@ class ShotDetector:
 
         triggered = False
 
-        # Method A: 3-D arc — upward Kalman velocity exceeds threshold
-        if tracker.velocity_3d is not None:
-            vy = float(tracker.velocity_3d[1])
-            if vy > config.ARC_VELOCITY_THRESHOLD:
+        vel3d = tracker.velocity_3d
+        vy_3d    = float(vel3d[1]) if vel3d is not None else None
+        horiz_3d = float(np.linalg.norm([vel3d[0], vel3d[2]])) if vel3d is not None else None
+
+        # Method A: 3-D arc — upward velocity AND meaningful horizontal motion.
+        # The horizontal-motion gate filters vertical bounces and warm-up tosses
+        # that otherwise look like a release.
+        if vel3d is not None:
+            if vy_3d > config.ARC_VELOCITY_THRESHOLD and horiz_3d > 0.5:
                 triggered = True
 
-        # Method B: 2-D pixel rise — ball rises > threshold in rolling window
+        # Method B: 2-D pixel rise. Validate against 3-D velocity if available —
+        # the ball can appear to "rise" in the image when YOLO swaps to a different
+        # object at higher y (e.g., a held ball mid-frame), producing a false
+        # trigger on a ball that's actually descending in 3-D. This was the root
+        # cause of the shot-1 false MAKE with release angle ≈ −71°.
         if not triggered and len(self._ball_y_window) >= config.PIXEL_RISE_WINDOW:
             y_vals = self._ball_y_window
-            rise_px = y_vals[-1] - y_vals[0]   # negative = rising (image y flipped)
+            rise_px = y_vals[-1] - y_vals[0]
             if -rise_px / self._fh > config.PIXEL_RISE_THRESHOLD:
-                triggered = True
+                if vel3d is None or (vy_3d > -0.5 and horiz_3d > 0.5):
+                    triggered = True
 
         if not triggered:
             return None
@@ -264,17 +274,17 @@ class ShotDetector:
         hoop_det: Optional[Detection],
         hoop_3d:  Optional[np.ndarray],
     ) -> Outcome:
-        # 2-D first: only ever returns MAKE or PENDING. At long range (~8 m to
-        # the hoop) ZED depth on a small fast ball is noisier than the 3-D
-        # cylinder radius, so trusting 3-D as primary causes valid makes to be
-        # ruled out before 2-D ever sees the trajectory crossing.
+        # 2-D first: at long range, 2-D image geometry is more reliable than the
+        # noisy stereo depth used by the 3-D cylinder check. 2-D fires MAKE on a
+        # trajectory crossing through the hoop bbox, and MISS the moment the
+        # ball is clearly past the rim — both faster than the 3-D fallback.
         if tracker.position_2d is not None and hoop_det is not None:
             outcome = self._classify_2d(tracker, hoop_det)
-            if outcome == Outcome.MAKE:
+            if outcome != Outcome.PENDING:
                 return outcome
 
-        # 3-D second: confirms makes via cylinder pass-through and detects
-        # rim bounces / sideways slips.
+        # 3-D second: backup for cases where 2-D doesn't have enough signal
+        # (e.g., ball partially occluded near the rim).
         if tracker.position_3d is not None and hoop_3d is not None:
             outcome = self._classify_3d(tracker.position_3d, tracker.velocity_3d, hoop_3d)
             if outcome != Outcome.PENDING:
@@ -339,11 +349,11 @@ class ShotDetector:
             if frames_since_entry >= 6 and in_cylinder and descending:
                 return Outcome.MAKE
 
-        # Ball passed clearly below hoop without entering cylinder → MISS.
-        # Threshold raised from 0.4 m to 0.7 m so the 2-D crossing check has
-        # more frames to fire MAKE before this short-circuits. At long range
-        # the cylinder entry test is unreliable due to depth noise.
-        if ball_y < hoop_y - 0.7 and self._cylinder_entry_frame < 0:
+        # Backup MISS — only fires if 2-D classifier didn't already terminate
+        # the arc (e.g., ball below hoop bbox in 2-D but inside its horizontal
+        # column, so 2-D MISS rule didn't trigger). Threshold is generous to
+        # tolerate stereo depth noise on a fast ball.
+        if ball_y < hoop_y - 0.5 and self._cylinder_entry_frame < 0:
             return Outcome.MISS
 
         return Outcome.PENDING
@@ -353,41 +363,50 @@ class ShotDetector:
         tracker:  TrackerResult,
         hoop_det: Detection,
     ) -> Outcome:
-        """Trajectory crossing through hoop bbox + ball moving downward.
+        """2-D classification. Returns MAKE on bbox crossing, MISS on a clearly
+        past-rim trajectory, otherwise PENDING.
 
-        Checks the line segment between the previous and current ball position
-        for intersection with the (padded) hoop bbox — this catches makes where
-        the ball moves fast enough to skip past the bbox between samples.
+        Both rules require the ball to be descending in image space — at release
+        the ball is below the hoop and offset from the shooter, which would
+        otherwise satisfy the MISS geometry before the shot has even arced up.
         """
         if tracker.position_2d is None:
             return Outcome.PENDING
 
-        # Ball must be moving downward in image (y increasing)
-        if len(self._ball_y_window) >= 4:
-            if self._ball_y_window[-1] <= self._ball_y_window[-3]:
-                return Outcome.PENDING
+        descending_2d = (
+            len(self._ball_y_window) >= 4
+            and self._ball_y_window[-1] > self._ball_y_window[-3]
+        )
+        if not descending_2d:
+            return Outcome.PENDING
 
         bx, by = tracker.position_2d
         hx1, hy1, hx2, hy2 = hoop_det.bbox
         pad = 50
-        rx1, ry1, rx2, ry2 = hx1-pad, hy1-pad, hx2+pad, hy2+pad
+        rect = (hx1-pad, hy1-pad, hx2+pad, hy2+pad)
 
-        # Current point inside padded bbox
-        if rx1 <= bx <= rx2 and ry1 <= by <= ry2:
+        # Current point inside padded bbox → MAKE
+        if rect[0] <= bx <= rect[2] and rect[1] <= by <= rect[3]:
             return Outcome.MAKE
 
-        # Trajectory crossing — check the last few segments of the shot trail.
-        # Looking back N segments catches makes where the ball was in flight
-        # the previous frame but our descending check delayed the result one
-        # frame, OR where YOLO briefly missed the ball mid-bbox.
+        # Trajectory crossing through last few segments → MAKE.
+        # Looking back N segments catches makes where YOLO briefly missed the
+        # ball mid-bbox or our descending gate delayed the result one frame.
         if self._current is not None and len(self._current.trail_2d) >= 2:
             trail = self._current.trail_2d
             n_check = min(4, len(trail) - 1)
             for i in range(len(trail) - 1 - n_check, len(trail) - 1):
                 if i < 0:
                     continue
-                if _segment_intersects_rect(trail[i], trail[i+1], (rx1, ry1, rx2, ry2)):
+                if _segment_intersects_rect(trail[i], trail[i+1], rect):
                     return Outcome.MAKE
+
+        # Fast MISS path — ball is clearly past the rim (below the bbox AND
+        # outside its horizontal column). This terminates the arc within a
+        # frame or two of the physical miss, so the cooldown doesn't swallow
+        # the next shot.
+        if by > hy2 + 35 and (bx < hx1 - 30 or bx > hx2 + 30):
+            return Outcome.MISS
 
         return Outcome.PENDING
 

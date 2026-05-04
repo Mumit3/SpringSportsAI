@@ -84,7 +84,7 @@ ARC_MIN_FRAMES         = 8     # arc must last ≥ this many frames to be valid
 ARC_MAX_FRAMES         = 150   # arc auto-terminates after this many frames
 PIXEL_RISE_THRESHOLD   = 0.10  # fraction of frame height risen in window
 PIXEL_RISE_WINDOW      = 8     # rolling frame window for 2D method
-SHOT_COOLDOWN_FRAMES   = 70    # minimum frames between detected shots
+SHOT_COOLDOWN_FRAMES   = 35    # minimum frames between detected shots (1.17 s @ 30 fps)
 
 # Make/miss: ball must pass through hoop plane within this radius (metres).
 # Set wider than the real rim radius (0.23 m) to absorb stereo depth noise on
