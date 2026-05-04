@@ -18,6 +18,31 @@ from .detector import Detection
 from . import config
 
 
+def _segment_intersects_rect(p1, p2, rect) -> bool:
+    """Liang-Barsky test: does segment p1→p2 intersect axis-aligned rect?"""
+    x1, y1 = p1
+    x2, y2 = p2
+    xmin, ymin, xmax, ymax = rect
+    dx, dy = x2 - x1, y2 - y1
+    t_enter, t_exit = 0.0, 1.0
+    for p, q in ((-dx, x1 - xmin), (dx, xmax - x1),
+                 (-dy, y1 - ymin), (dy, ymax - y1)):
+        if p == 0:
+            if q < 0:
+                return False
+            continue
+        t = q / p
+        if p < 0:
+            if t > t_exit:
+                return False
+            t_enter = max(t_enter, t)
+        else:
+            if t < t_enter:
+                return False
+            t_exit = min(t_exit, t)
+    return t_enter <= t_exit
+
+
 class Outcome(str, Enum):
     MAKE    = "make"
     MISS    = "miss"
@@ -321,22 +346,35 @@ class ShotDetector:
         tracker:  TrackerResult,
         hoop_det: Detection,
     ) -> Outcome:
-        """Bounding-box overlap + ball moving downward."""
+        """Trajectory crossing through hoop bbox + ball moving downward.
+
+        Checks the line segment between the previous and current ball position
+        for intersection with the (padded) hoop bbox — this catches makes where
+        the ball moves fast enough to skip past the bbox between samples.
+        """
         if tracker.position_2d is None:
             return Outcome.PENDING
 
         # Ball must be moving downward in image (y increasing)
         if len(self._ball_y_window) >= 4:
             if self._ball_y_window[-1] <= self._ball_y_window[-3]:
-                return Outcome.PENDING   # not descending in image
+                return Outcome.PENDING
 
         bx, by = tracker.position_2d
         hx1, hy1, hx2, hy2 = hoop_det.bbox
+        pad = 25
+        rx1, ry1, rx2, ry2 = hx1-pad, hy1-pad, hx2+pad, hy2+pad
 
-        # Expand hoop bbox slightly
-        pad = 20
-        if (hx1-pad <= bx <= hx2+pad) and (hy1-pad <= by <= hy2+pad):
+        # Current point inside padded bbox
+        if rx1 <= bx <= rx2 and ry1 <= by <= ry2:
             return Outcome.MAKE
+
+        # Trajectory crossing — segment from previous to current ball position
+        if (self._current is not None
+                and len(self._current.trail_2d) >= 2):
+            px, py = self._current.trail_2d[-2]
+            if _segment_intersects_rect((px, py), (bx, by), (rx1, ry1, rx2, ry2)):
+                return Outcome.MAKE
 
         return Outcome.PENDING
 

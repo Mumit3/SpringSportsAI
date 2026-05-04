@@ -54,7 +54,7 @@ class Annotator:
         self._draw_version(out)
 
         if shot is not None:
-            self._result_display_frames = 90   # show result for 3 s @ 30 fps
+            self._result_display_frames = 30   # show result for 1 s @ 30 fps
             self._last_outcome = shot.outcome
             self._last_metrics = shot.to_dict()
 
