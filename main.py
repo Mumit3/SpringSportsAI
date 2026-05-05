@@ -225,6 +225,13 @@ def process_svo(
     with open(traces_path, "w") as f:
         json.dump(analytics.plotly_traces(reader.info.width, reader.info.height), f)
 
+    traces_3d_path = data_dir / "traces_3d.json"
+    with open(traces_3d_path, "w") as f:
+        json.dump(
+            analytics.plotly_traces_3d(hoop_3d, config.MAKE_CYLINDER_RADIUS),
+            f,
+        )
+
     _cb(1.0, "Done.")
 
     elapsed = time.time() - t0

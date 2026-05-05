@@ -89,8 +89,15 @@
   <!-- ── Trajectory chart ───────────────────────────────────── -->
   {% if shots %}
   <section class="card">
-    <h2 class="card-title">Shot Trajectories</h2>
+    <h2 class="card-title">Shot Trajectories (2D)</h2>
     <div id="traj-chart"></div>
+  </section>
+
+  <!-- ── 3D trajectory chart ────────────────────────────────── -->
+  <section class="card">
+    <h2 class="card-title">Shot Trajectories (3D · interactive)</h2>
+    <p class="hint">Drag to rotate · scroll to zoom · double-click to reset</p>
+    <div id="traj-chart-3d" style="height: 600px;"></div>
   </section>
 
   <!-- ── Shot cards ─────────────────────────────────────────── -->
@@ -153,6 +160,25 @@
       yaxis:  { title: 'Height (px, inverted)',     gridcolor: '#30363d', color: '#e6edf3' },
       margin: { t: 20, b: 50, l: 60, r: 20 },
       legend: { bgcolor: '#161b22', bordercolor: '#30363d', borderwidth: 1 },
+    }, { responsive: true });
+  }
+
+  // 3-D trajectory chart
+  const traces3d = {{ traces_3d|safe }};
+  if (traces3d && traces3d.length > 0) {
+    Plotly.newPlot('traj-chart-3d', traces3d, {
+      paper_bgcolor: '#161b22',
+      font:   { color: '#e6edf3' },
+      margin: { t: 10, b: 0, l: 0, r: 0 },
+      legend: { bgcolor: '#161b22', bordercolor: '#30363d', borderwidth: 1 },
+      scene: {
+        bgcolor: '#0d1117',
+        aspectmode: 'data',
+        xaxis: { title: 'X · across (m)', gridcolor: '#30363d', zerolinecolor: '#484f58', color: '#e6edf3' },
+        yaxis: { title: 'Z · depth (m)',  gridcolor: '#30363d', zerolinecolor: '#484f58', color: '#e6edf3' },
+        zaxis: { title: 'Y · height (m)', gridcolor: '#30363d', zerolinecolor: '#484f58', color: '#e6edf3' },
+        camera: { eye: { x: 1.6, y: -1.8, z: 0.9 } },
+      },
     }, { responsive: true });
   }
 

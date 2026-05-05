@@ -99,3 +99,69 @@ class Analytics:
                 "marker": {"size": 4},
             })
         return traces
+
+    # ── 3-D trajectory export for Plotly ─────────────────────────────────────
+
+    def plotly_traces_3d(
+        self,
+        hoop_3d: "np.ndarray | None" = None,
+        cylinder_radius: float = 0.30,
+    ) -> List[Dict]:
+        """Return list of Plotly 3-D scatter traces — one per shot arc, plus a
+        marker for the locked hoop position and a rim circle.
+
+        ZED coordinates (LEFT_HANDED_Y_UP): X = horizontal across, Y = vertical,
+        Z = distance from camera. Plotly's 3-D scene treats Z as up by default,
+        so we map ZED's Y to Plotly's Z for the most natural orientation.
+        """
+        traces: List[Dict] = []
+        for shot in self.shots:
+            if not shot.trail_3d:
+                continue
+            xs = [p[0] for p in shot.trail_3d]
+            ys = [p[2] for p in shot.trail_3d]   # ZED Z → Plotly Y (depth)
+            zs = [p[1] for p in shot.trail_3d]   # ZED Y → Plotly Z (up)
+            color = "#22c55e" if shot.outcome == Outcome.MAKE else "#ef4444"
+            label = f"Shot {shot.shot_id} – {shot.outcome.value.upper()}"
+            traces.append({
+                "type":   "scatter3d",
+                "mode":   "lines+markers",
+                "x":      xs,
+                "y":      ys,
+                "z":      zs,
+                "name":   label,
+                "line":   {"color": color, "width": 4},
+                "marker": {"size": 3, "color": color},
+            })
+
+        if hoop_3d is not None:
+            hx, hy, hz = float(hoop_3d[0]), float(hoop_3d[1]), float(hoop_3d[2])
+            # Hoop centre marker
+            traces.append({
+                "type":   "scatter3d",
+                "mode":   "markers",
+                "x":      [hx],
+                "y":      [hz],
+                "z":      [hy],
+                "name":   "Hoop centre",
+                "marker": {"size": 6, "color": "#f97316", "symbol": "diamond"},
+            })
+            # Rim circle (drawn as line trace in the hoop's horizontal plane)
+            ring_x, ring_y, ring_z = [], [], []
+            for i in range(33):
+                angle = 2 * np.pi * i / 32
+                ring_x.append(hx + cylinder_radius * float(np.cos(angle)))
+                ring_y.append(hz + cylinder_radius * float(np.sin(angle)))
+                ring_z.append(hy)
+            traces.append({
+                "type":   "scatter3d",
+                "mode":   "lines",
+                "x":      ring_x,
+                "y":      ring_y,
+                "z":      ring_z,
+                "name":   "Rim",
+                "line":   {"color": "#f97316", "width": 4},
+                "showlegend": True,
+            })
+
+        return traces

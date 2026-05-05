@@ -320,6 +320,7 @@ def results_page(job_id: str):
 
     analytics_path = out_dir / "analytics.json"
     traces_path    = out_dir / "traces.json"
+    traces_3d_path = out_dir / "traces_3d.json"
     notes_path     = out_dir / "notes.txt"
 
     if not analytics_path.exists():
@@ -333,17 +334,23 @@ def results_page(job_id: str):
         with open(traces_path) as f:
             traces = json.load(f)
 
+    traces_3d = []
+    if traces_3d_path.exists():
+        with open(traces_3d_path) as f:
+            traces_3d = json.load(f)
+
     notes = ""
     if notes_path.exists():
         notes = notes_path.read_text(encoding="utf-8")
 
     return render_template(
         "results.html",
-        job_id   = job_id,
-        summary  = analytics_data.get("summary", {}),
-        shots    = analytics_data.get("shots", []),
-        traces   = json.dumps(traces),
-        notes    = notes,
+        job_id    = job_id,
+        summary   = analytics_data.get("summary", {}),
+        shots     = analytics_data.get("shots", []),
+        traces    = json.dumps(traces),
+        traces_3d = json.dumps(traces_3d),
+        notes     = notes,
     )
 
 

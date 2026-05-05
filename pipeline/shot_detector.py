@@ -43,6 +43,8 @@ class ShotEvent:
 
     # 2-D pixel trail of ball positions during this shot arc
     trail_2d: List = field(default_factory=list)
+    # 3-D world trail (X, Y, Z) in metres — for interactive 3-D plotting
+    trail_3d: List = field(default_factory=list)
 
     def to_dict(self) -> dict:
         vel  = self.release_vel
@@ -237,6 +239,9 @@ class ShotDetector:
 
         if tracker.position_2d is not None:
             self._current.trail_2d.append(tracker.position_2d)
+        if tracker.position_3d is not None:
+            p = tracker.position_3d
+            self._current.trail_3d.append((float(p[0]), float(p[1]), float(p[2])))
 
         # Update apex
         if tracker.position_3d is not None:
