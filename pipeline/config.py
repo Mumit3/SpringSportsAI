@@ -105,6 +105,9 @@ MAKE_CHECK_FRAMES = 60
 # why a shot was classified the way it was — shows closest 3-D approach,
 # cylinder entry, 2-D bbox proximity, and which rule fired.
 DEBUG_SHOT_DETECTION = True
+# How many frames of pre-trigger tracker state to keep in the rolling buffer
+# (printed at trigger time). At 15 fps, 30 frames = 2 seconds of context.
+DEBUG_PRETRIGGER_FRAMES = 30
 
 # ── Hoop colour segmentation fallback ────────────────────────────────────────
 # HSV range for the orange steel rim

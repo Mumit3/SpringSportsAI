@@ -104,6 +104,10 @@ class ShotDetector:
         self._dbg_hoop_bbox:      Optional[tuple] = None
         self._dbg_classify_reason: str = ""
 
+        # Rolling buffer of per-frame tracker state — used to dump pre-trigger
+        # context when a shot fires, so we can see why Method A did/didn't fire.
+        self._dbg_frame_buf: List[tuple] = []
+
         self.completed_shots: List[ShotEvent] = []
 
     # ── public ────────────────────────────────────────────────────────────────
@@ -118,6 +122,16 @@ class ShotDetector:
         """Returns a newly completed ShotEvent, or None."""
         if self._cooldown > 0:
             self._cooldown -= 1
+
+        # Rolling capture of per-frame tracker state for pre-trigger diagnostics.
+        if config.DEBUG_SHOT_DETECTION:
+            p3d_copy = tracker.position_3d.copy() if tracker.position_3d is not None else None
+            v3d_copy = tracker.velocity_3d.copy() if tracker.velocity_3d is not None else None
+            self._dbg_frame_buf.append((
+                frame_idx, tracker.source, tracker.position_2d, p3d_copy, v3d_copy,
+            ))
+            if len(self._dbg_frame_buf) > config.DEBUG_PRETRIGGER_FRAMES:
+                self._dbg_frame_buf.pop(0)
 
         # Track 2-D ball y position for pixel-rise method
         if tracker.position_2d is not None:
@@ -161,6 +175,11 @@ class ShotDetector:
 
         if not triggered:
             return None
+
+        # Dump pre-trigger frame buffer so we can see what 3D state we had
+        # leading up to the trigger (in particular, why Method A didn't fire).
+        if config.DEBUG_SHOT_DETECTION:
+            self._print_pre_trigger_buffer(method, frame_idx)
 
         # Reset per-shot debug stats
         self._dbg_trigger_method  = method
@@ -428,6 +447,41 @@ class ShotDetector:
         self._current = None
         self.completed_shots.append(shot)
         return shot
+
+    def _print_pre_trigger_buffer(self, method: str, trigger_frame: int) -> None:
+        """Print the last N frames of tracker state leading up to the trigger.
+
+        Reveals YOLO detection continuity (source field) and 3D Kalman state
+        (position/velocity), so we can diagnose why Method A (3D vy > threshold)
+        did or didn't fire and whether ball detection was stable during ascent.
+        """
+        if not self._dbg_frame_buf:
+            return
+        n = len(self._dbg_frame_buf)
+        print(
+            f"\n[Pre-trigger trace] Shot #{self._shot_id + 1}, "
+            f"trigger frame {trigger_frame} via {method} "
+            f"({n} frames captured, A threshold = {config.ARC_VELOCITY_THRESHOLD} m/s)"
+        )
+        # Count detection sources to summarise YOLO continuity
+        src_counts = {}
+        max_vy = -1e9
+        for _, src, _, _, v3d in self._dbg_frame_buf:
+            src_counts[src] = src_counts.get(src, 0) + 1
+            if v3d is not None:
+                max_vy = max(max_vy, float(v3d[1]))
+        src_summary = ", ".join(f"{k}={v}" for k, v in src_counts.items())
+        max_vy_str = f"{max_vy:+.2f}" if max_vy > -1e8 else "n/a"
+        print(f"  source breakdown: {src_summary} | max vy seen = {max_vy_str} m/s")
+        print(f"  {'frame':>5}  {'source':<13} {'2D':>11}  {'3D (X,Y,Z)':>22}  {'vel (vx,vy,vz)':>22}")
+        for f, src, p2d, p3d, v3d in self._dbg_frame_buf:
+            p2d_s = f"({p2d[0]},{p2d[1]})" if p2d is not None else "—"
+            p3d_s = (f"({p3d[0]:+.2f},{p3d[1]:+.2f},{p3d[2]:+.2f})"
+                     if p3d is not None else "—")
+            v3d_s = (f"({v3d[0]:+.1f},{v3d[1]:+.1f},{v3d[2]:+.1f})"
+                     if v3d is not None else "—")
+            print(f"  {f:>5}  {src:<13} {p2d_s:>11}  {p3d_s:>22}  {v3d_s:>22}")
+        print()
 
     def _print_debug(self, outcome: Outcome, frame_idx: int) -> None:
         s = self._current
