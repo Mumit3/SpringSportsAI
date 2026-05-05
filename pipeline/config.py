@@ -97,7 +97,7 @@ SHOT_COOLDOWN_FRAMES   = 40    # minimum frames between detected shots (1.33 s @
 # Real rim radius is 0.23 m, but yolov8s @ imgsz=1280 places ball/hoop bboxes a
 # few pixels different from yolov8n @ 640, which shifts the 3-D hoop center by
 # a few cm. 0.30 m absorbs that shift so makes still register.
-MAKE_CYLINDER_RADIUS = 0.30
+MAKE_CYLINDER_RADIUS = 0.35
 # How many frames after shot release to keep checking for make/miss
 MAKE_CHECK_FRAMES = 60
 
