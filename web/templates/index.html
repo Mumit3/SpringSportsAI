@@ -4,23 +4,52 @@
 {% block content %}
 <div class="page-index">
 
-  <!-- ── Process new session ─────────────────────────────────── -->
-  <section class="card">
-    <h2 class="card-title">
-      <span class="title-dot"></span>Process SVO File
-    </h2>
+  <!-- ── Stats overview ───────────────────────────────────────── -->
+  <section class="stats-overview">
+    <div class="stat-tile">
+      <span class="stat-tile-label">Sessions</span>
+      <span class="stat-tile-num">{{ agg.sessions }}</span>
+    </div>
+    <div class="stat-tile">
+      <span class="stat-tile-label">Shots</span>
+      <span class="stat-tile-num">{{ agg.shots }}</span>
+    </div>
+    <div class="stat-tile">
+      <span class="stat-tile-label">Makes</span>
+      <span class="stat-tile-num make">{{ agg.makes }}</span>
+    </div>
+    <div class="stat-tile filled">
+      <span class="stat-tile-label">FG%</span>
+      <span class="stat-tile-num">{{ agg.fg_pct }}</span>
+    </div>
+  </section>
+
+  <!-- ── Process SVO ──────────────────────────────────────────── -->
+  <section class="section">
+    <div class="section-head">
+      <span class="section-label">Process SVO</span>
+      <span class="section-meta">{{ svo_files|length }} FILES</span>
+    </div>
 
     {% if svo_files %}
     <div class="file-grid">
       {% for f in svo_files %}
-      <button class="file-btn"
+      <button class="file-card"
               data-path="{{ f.path }}"
               data-name="{{ f.name }}">
-        <span class="file-icon">📹</span>
-        <span class="file-meta">
-          <span class="file-name">{{ f.name }}</span>
-          <span class="file-folder">{{ f.folder }} · {{ f.size_mb }} MB</span>
-        </span>
+        <div class="file-card-row">
+          <div class="file-card-text">
+            <span class="file-card-name">{{ f.name }}</span>
+            <span class="file-card-meta">{{ f.folder }} · {{ f.size_mb }} MB</span>
+          </div>
+          <span class="file-card-size">{{ f.size_mb }}MB</span>
+        </div>
+        <div class="file-card-action">
+          <input type="text" class="form-input file-card-label"
+                 placeholder="label · default: timestamp" autocomplete="off"/>
+          <button class="btn btn-primary file-card-start">▶ START</button>
+          <button class="btn btn-secondary file-card-cancel">Cancel</button>
+        </div>
       </button>
       {% endfor %}
     </div>
@@ -31,22 +60,6 @@
       <code>svo_files/</code>.
     </p>
     {% endif %}
-
-    <!-- Inline label prompt -->
-    <div class="label-prompt hidden" id="label-prompt">
-      <div class="form-row">
-        <label class="form-label" for="process-label">Label this run</label>
-        <input id="process-label" class="form-input" type="text"
-               placeholder="e.g. tensorrt_v3" autocomplete="off"/>
-        <div class="form-hint">
-          Used in the output MP4 filename. Default: timestamp.
-        </div>
-      </div>
-      <div class="form-actions">
-        <button id="confirm-btn" class="btn btn-primary">▶ Start</button>
-        <button id="cancel-btn" class="btn btn-secondary">Cancel</button>
-      </div>
-    </div>
 
     <!-- Progress panel -->
     <div id="progress-panel" class="progress-panel hidden">
@@ -60,21 +73,27 @@
     </div>
   </section>
 
-  <!-- ── Previous sessions ──────────────────────────────────── -->
+  <!-- ── Previous Sessions ────────────────────────────────────── -->
   {% if sessions %}
-  <section class="card">
-    <h2 class="card-title">
-      <span class="title-dot"></span>Previous Sessions
-    </h2>
-    <div class="sessions-list">
+  <section class="section">
+    <div class="section-head">
+      <span class="section-label">Previous Sessions</span>
+    </div>
+
+    <div class="sessions-table">
+      <div class="sessions-thead">
+        <span class="col-session">Session</span>
+        <span class="col-num">Shots</span>
+        <span class="col-num">Makes</span>
+        <span class="col-num">FG%</span>
+      </div>
       {% for s in sessions %}
       {% set sm = s.summary %}
-      <a href="/results/{{ s.job_id }}" class="session-row">
-        <span class="session-name">{{ s.job_id }}</span>
-        <span class="session-stat">{{ sm.total_shots }} shots</span>
-        <span class="session-stat make">{{ sm.makes }} makes</span>
-        <span class="session-stat pct">{{ sm.fg_pct }}%</span>
-        <span class="session-arrow">→</span>
+      <a href="/results/{{ s.job_id }}" class="sessions-row">
+        <span class="col-session">{{ s.job_id }}</span>
+        <span class="col-num">{{ sm.total_shots }}</span>
+        <span class="col-num make">{{ sm.makes }}</span>
+        <span class="col-num pct">{{ sm.fg_pct }}</span>
       </a>
       {% endfor %}
     </div>

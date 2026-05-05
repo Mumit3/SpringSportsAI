@@ -1,64 +1,62 @@
 /* main.js — index page interactions
  *
- * Flow:
- *   click .file-btn  → select it, reveal #label-prompt
- *   type label, click #confirm-btn → POST /api/process
- *   listen on /api/status/<job_id>, redirect to /results/<job_id> when done
+ * Each .file-card has an inline action area that's hidden until the card is
+ * clicked. Clicking another card collapses any previously-expanded one.
  */
 
 document.addEventListener('DOMContentLoaded', () => {
-  const fileBtns       = document.querySelectorAll('.file-btn');
-  const labelPrompt    = document.getElementById('label-prompt');
-  const labelInput     = document.getElementById('process-label');
-  const confirmBtn     = document.getElementById('confirm-btn');
-  const cancelBtn      = document.getElementById('cancel-btn');
+  const cards          = document.querySelectorAll('.file-card');
   const progressPanel  = document.getElementById('progress-panel');
   const progressBar    = document.getElementById('progress-bar');
   const progressMsg    = document.getElementById('progress-msg');
   const progressPct    = document.getElementById('progress-pct');
 
-  let selectedPath = null;
   let activeEventSource = null;
 
-  fileBtns.forEach(btn => {
-    btn.addEventListener('click', () => {
-      fileBtns.forEach(b => b.classList.remove('selected'));
-      btn.classList.add('selected');
+  cards.forEach(card => {
+    const labelInput = card.querySelector('.file-card-label');
+    const startBtn   = card.querySelector('.file-card-start');
+    const cancelBtn  = card.querySelector('.file-card-cancel');
 
-      selectedPath = btn.dataset.path;
-
-      // Reveal the label prompt; hide any prior progress
-      labelPrompt.classList.remove('hidden');
-      progressPanel.classList.add('hidden');
-      labelInput.focus();
+    // Click on card body (but not action area) → expand
+    card.addEventListener('click', (e) => {
+      // If the click was on a button/input inside the action area, let the
+      // dedicated handler deal with it.
+      if (e.target.closest('.file-card-action')) return;
+      cards.forEach(c => { if (c !== card) c.classList.remove('selected'); });
+      card.classList.toggle('selected');
+      if (card.classList.contains('selected') && labelInput) {
+        labelInput.focus();
+      }
     });
+
+    if (labelInput) {
+      labelInput.addEventListener('keydown', (e) => {
+        e.stopPropagation();   // don't bubble Enter into card click
+        if (e.key === 'Enter') startBtn.click();
+      });
+      labelInput.addEventListener('click', (e) => e.stopPropagation());
+    }
+
+    if (cancelBtn) {
+      cancelBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        card.classList.remove('selected');
+      });
+    }
+
+    if (startBtn) {
+      startBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const path  = card.dataset.path;
+        const label = (labelInput.value || '').trim();
+        startProcessing(path, label);
+      });
+    }
   });
 
-  if (cancelBtn) {
-    cancelBtn.addEventListener('click', () => {
-      labelPrompt.classList.add('hidden');
-      fileBtns.forEach(b => b.classList.remove('selected'));
-      selectedPath = null;
-    });
-  }
-
-  if (confirmBtn) {
-    confirmBtn.addEventListener('click', () => {
-      if (!selectedPath) return;
-      const label = (labelInput.value || '').trim();
-      startProcessing(selectedPath, label);
-    });
-  }
-
-  // Allow Enter to submit
-  if (labelInput) {
-    labelInput.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') confirmBtn.click();
-    });
-  }
-
   function startProcessing(path, label) {
-    labelPrompt.classList.add('hidden');
+    cards.forEach(c => c.classList.remove('selected'));
     progressPanel.classList.remove('hidden');
     setProgress(0, `Starting ${path}…`);
 

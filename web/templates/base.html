@@ -10,23 +10,21 @@
 <body>
   <header class="site-header">
     <a href="/" class="logo">
-      <span class="logo-icon">🏀</span>
-      <span class="logo-text">Basketball Analytics</span>
+      <span class="logo-mark">B</span>
+      <span class="logo-text">BASKETBALL ANALYTICS</span>
     </a>
+
     <nav class="site-nav">
-      <a href="/" class="nav-link">Sessions</a>
-      <a href="/record" class="nav-link">Record</a>
+      <a href="/"       class="nav-link {% if request.path == '/' %}active{% endif %}">Sessions</a>
+      <a href="/record" class="nav-link {% if request.path.startswith('/record') %}active{% endif %}">Record</a>
     </nav>
-    <span class="logo-sub">SDP-113 · Binghamton University</span>
+
+    <span class="logo-sub">SDP-113 · BINGHAMTON</span>
   </header>
 
   <main class="main-content">
     {% block content %}{% endblock %}
   </main>
-
-  <footer class="site-footer">
-    <span>AI Assisted Sports Analytics &mdash; SDP-113</span>
-  </footer>
 
   {% block scripts %}{% endblock %}
 </body>

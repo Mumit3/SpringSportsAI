@@ -196,12 +196,29 @@ def _run_job(job_id: str, svo_path: str, label: str) -> None:
 
 # ── routes ────────────────────────────────────────────────────────────────────
 
+def _aggregate_stats(sessions):
+    """Roll up totals across all sessions for the top stats row."""
+    n_sessions = len(sessions)
+    total_shots = sum(s["summary"].get("total_shots", 0) for s in sessions)
+    total_makes = sum(s["summary"].get("makes", 0)        for s in sessions)
+    fg_pct = round(total_makes / total_shots * 100, 1) if total_shots else 0.0
+    return {
+        "sessions": n_sessions,
+        "shots":    total_shots,
+        "makes":    total_makes,
+        "fg_pct":   fg_pct,
+    }
+
+
 @app.route("/")
 def index():
+    sessions  = _list_results()
+    svo_files = _list_svo_files()
     return render_template(
         "index.html",
-        svo_files = _list_svo_files(),
-        sessions  = _list_results(),
+        svo_files = svo_files,
+        sessions  = sessions,
+        agg       = _aggregate_stats(sessions),
     )
 
 
