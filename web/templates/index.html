@@ -34,15 +34,17 @@
     {% if svo_files %}
     <div class="file-grid">
       {% for f in svo_files %}
-      <button class="file-card"
-              data-path="{{ f.path }}"
-              data-name="{{ f.name }}">
+      <div class="file-card"
+           role="button"
+           tabindex="0"
+           data-path="{{ f.path }}"
+           data-name="{{ f.name }}">
         <div class="file-card-row">
           <div class="file-card-text">
-            <span class="file-card-name">{{ f.name }}</span>
-            <span class="file-card-meta">{{ f.folder }} · {{ f.size_mb }} MB</span>
+            <span class="file-card-name" title="{{ f.name }}">{{ f.name }}</span>
+            <span class="file-card-meta">{{ f.folder }}</span>
           </div>
-          <span class="file-card-size">{{ f.size_mb }}MB</span>
+          <span class="file-card-size">{{ f.size_mb }} MB</span>
         </div>
         <div class="file-card-action">
           <input type="text" class="form-input file-card-label"
@@ -50,7 +52,7 @@
           <button class="btn btn-primary file-card-start">▶ START</button>
           <button class="btn btn-secondary file-card-cancel">Cancel</button>
         </div>
-      </button>
+      </div>
       {% endfor %}
     </div>
     {% else %}

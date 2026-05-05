@@ -20,13 +20,20 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Click on card body (but not action area) → expand
     card.addEventListener('click', (e) => {
-      // If the click was on a button/input inside the action area, let the
-      // dedicated handler deal with it.
       if (e.target.closest('.file-card-action')) return;
       cards.forEach(c => { if (c !== card) c.classList.remove('selected'); });
       card.classList.toggle('selected');
       if (card.classList.contains('selected') && labelInput) {
         labelInput.focus();
+      }
+    });
+
+    // Keyboard support — Enter/Space when card is focused
+    card.addEventListener('keydown', (e) => {
+      if (e.target !== card) return;   // ignore key events from inputs
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();   // prevent page scroll on Space
+        card.click();
       }
     });
 
