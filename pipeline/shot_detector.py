@@ -155,7 +155,7 @@ class ShotDetector:
         if not triggered and len(self._ball_y_window) >= config.PIXEL_RISE_WINDOW:
             y_vals = self._ball_y_window
             rise_px = y_vals[-1] - y_vals[0]   # negative = rising (image y flipped)
-            if -rise_px / self._fh > config.PIXEL_RISE_THRESHOLD and (tracker.velocity_3d is None or float(tracker.velocity_3d[1]) > -0.5):
+            if -rise_px / self._fh > config.PIXEL_RISE_THRESHOLD:
                 triggered = True
                 method = "B (2D rise)"
 
