@@ -86,16 +86,14 @@ def _get_recorder():
 
 # ── helpers ───────────────────────────────────────────────────────────────────
 
-def _list_svo_files(mode: str = "regulation"):
+def _list_svo_files():
     """Recursively find all .svo / .svo2 files under the project root.
 
     Returns dicts with relative paths so the UI can show where each lives.
-
-    mode == "regulation": all SVOs except those inside any `mini/` directory.
-    mode == "mini":       only SVOs inside `svo_files/mini/`.
+    Mode (regulation vs. mini) is chosen at click time per-file in the UI,
+    not based on file location.
     """
     root = config.ROOT_DIR
-    mini_root = config.SVO_DIR / "mini"
     files = []
     for ext in ("*.svo", "*.svo2"):
         for p in root.rglob(ext):
@@ -105,19 +103,6 @@ def _list_svo_files(mode: str = "regulation"):
                 continue
             if rel.parts and rel.parts[0] == "outputs":
                 continue
-
-            # Detect whether this file lives under svo_files/mini/.
-            try:
-                p.relative_to(mini_root)
-                in_mini = True
-            except ValueError:
-                in_mini = False
-
-            if mode == "mini" and not in_mini:
-                continue
-            if mode == "regulation" and in_mini:
-                continue
-
             files.append({
                 "name": p.name,
                 "path": str(rel).replace("\\", "/"),
@@ -240,25 +225,19 @@ def _aggregate_stats(sessions):
 
 @app.route("/")
 def index():
-    sessions       = _list_results()
-    svo_regulation = _list_svo_files("regulation")
-    svo_mini       = _list_svo_files("mini")
+    sessions  = _list_results()
+    svo_files = _list_svo_files()
     return render_template(
         "index.html",
-        svo_files      = svo_regulation,    # backwards-compat alias
-        svo_regulation = svo_regulation,
-        svo_mini       = svo_mini,
-        sessions       = sessions,
-        agg            = _aggregate_stats(sessions),
+        svo_files = svo_files,
+        sessions  = sessions,
+        agg       = _aggregate_stats(sessions),
     )
 
 
 @app.route("/api/files")
 def api_files():
-    mode = (request.args.get("mode") or "regulation").strip()
-    if mode not in ("regulation", "mini"):
-        mode = "regulation"
-    return jsonify({"files": _list_svo_files(mode)})
+    return jsonify({"files": _list_svo_files()})
 
 
 @app.route("/api/folders")

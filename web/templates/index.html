@@ -24,22 +24,21 @@
     </div>
   </section>
 
-  <!-- ── Process SVO (Regulation) ─────────────────────────────── -->
-  <section class="section" data-mode="regulation">
+  <!-- ── Process SVO ──────────────────────────────────────────── -->
+  <section class="section">
     <div class="section-head">
-      <span class="section-label">Process SVO (Regulation)</span>
-      <span class="section-meta">{{ svo_regulation|length }} FILES</span>
+      <span class="section-label">Process SVO</span>
+      <span class="section-meta">{{ svo_files|length }} FILES</span>
     </div>
 
-    {% if svo_regulation %}
+    {% if svo_files %}
     <div class="file-grid">
-      {% for f in svo_regulation %}
+      {% for f in svo_files %}
       <div class="file-card"
            role="button"
            tabindex="0"
            data-path="{{ f.path }}"
-           data-name="{{ f.name }}"
-           data-mode="regulation">
+           data-name="{{ f.name }}">
         <div class="file-card-row">
           <div class="file-card-text">
             <span class="file-card-name" title="{{ f.name }}">{{ f.name }}</span>
@@ -50,50 +49,13 @@
         <div class="file-card-action">
           <input type="text" class="form-input file-card-label"
                  placeholder="label · default: timestamp" autocomplete="off"/>
-          <button class="btn btn-primary file-card-start">▶ START</button>
-          <button class="btn btn-secondary file-card-cancel">Cancel</button>
-        </div>
-      </div>
-      {% endfor %}
-    </div>
-    {% else %}
-    <p class="hint">
-      No regulation <code>.svo</code> / <code>.svo2</code> files found.
-      <a href="/record">Record one</a> or copy a recording into
-      <code>svo_files/</code>.
-    </p>
-    {% endif %}
-  </section>
-
-  <!-- ── Process SVO (Mini Hoop) ──────────────────────────────── -->
-  <section class="section" data-mode="mini">
-    <div class="section-head">
-      <span class="section-label">Process SVO (Mini Hoop)</span>
-      <span class="section-meta">{{ svo_mini|length }} FILES</span>
-    </div>
-
-    {% if svo_mini %}
-    <div class="file-grid">
-      {% for f in svo_mini %}
-      <div class="file-card"
-           role="button"
-           tabindex="0"
-           data-path="{{ f.path }}"
-           data-name="{{ f.name }}"
-           data-mode="mini">
-        <div class="file-card-row">
-          <div class="file-card-text">
-            <span class="file-card-name" title="{{ f.name }}">{{ f.name }}</span>
-            <span class="file-card-meta">{{ f.folder }}</span>
-          </div>
-          <span class="file-card-size">{{ f.size_mb }} MB</span>
-        </div>
-        <div class="file-card-action">
-          <input type="text" class="form-input file-card-label"
-                 placeholder="label · default: timestamp" autocomplete="off"/>
-          <label class="file-card-checkbox">
+          <select class="form-input file-card-mode" title="Processing mode">
+            <option value="regulation" selected>Regulation</option>
+            <option value="mini">Mini Hoop</option>
+          </select>
+          <label class="file-card-checkbox file-card-ball-only-wrap hidden">
             <input type="checkbox" class="file-card-ball-only"/>
-            Ball tracking only (skip make/miss)
+            Ball only
           </label>
           <button class="btn btn-primary file-card-start">▶ START</button>
           <button class="btn btn-secondary file-card-cancel">Cancel</button>
@@ -103,12 +65,13 @@
     </div>
     {% else %}
     <p class="hint">
-      No mini-hoop SVO files found. Place recordings in
-      <code>svo_files/mini/</code> to see them here.
+      No <code>.svo</code> / <code>.svo2</code> files found anywhere under the
+      project. <a href="/record">Record one</a> or copy a recording into
+      <code>svo_files/</code>.
     </p>
     {% endif %}
 
-    <!-- Progress panel (shared between both sections) -->
+    <!-- Progress panel -->
     <div id="progress-panel" class="progress-panel hidden">
       <div class="progress-info">
         <span id="progress-msg">Starting…</span>

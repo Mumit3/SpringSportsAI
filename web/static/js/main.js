@@ -14,9 +14,22 @@ document.addEventListener('DOMContentLoaded', () => {
   let activeEventSource = null;
 
   cards.forEach(card => {
-    const labelInput = card.querySelector('.file-card-label');
-    const startBtn   = card.querySelector('.file-card-start');
-    const cancelBtn  = card.querySelector('.file-card-cancel');
+    const labelInput  = card.querySelector('.file-card-label');
+    const startBtn    = card.querySelector('.file-card-start');
+    const cancelBtn   = card.querySelector('.file-card-cancel');
+    const modeSelect  = card.querySelector('.file-card-mode');
+    const ballOnlyWrap = card.querySelector('.file-card-ball-only-wrap');
+
+    // Show "Ball only" checkbox only when Mini Hoop is selected
+    if (modeSelect && ballOnlyWrap) {
+      const sync = () => {
+        if (modeSelect.value === 'mini') ballOnlyWrap.classList.remove('hidden');
+        else ballOnlyWrap.classList.add('hidden');
+      };
+      modeSelect.addEventListener('change', sync);
+      modeSelect.addEventListener('click',  (e) => e.stopPropagation());
+      sync();
+    }
 
     // Click on card body (but not action area) → expand
     card.addEventListener('click', (e) => {
@@ -55,11 +68,12 @@ document.addEventListener('DOMContentLoaded', () => {
     if (startBtn) {
       startBtn.addEventListener('click', (e) => {
         e.stopPropagation();
-        const path     = card.dataset.path;
-        const mode     = card.dataset.mode || 'regulation';
-        const label    = (labelInput.value || '').trim();
+        const path  = card.dataset.path;
+        const mode  = (modeSelect && modeSelect.value) || 'regulation';
+        const label = (labelInput.value || '').trim();
         const ballOnlyEl = card.querySelector('.file-card-ball-only');
-        const ballOnly = !!(ballOnlyEl && ballOnlyEl.checked);
+        const ballOnly = mode === 'mini'
+                         && !!(ballOnlyEl && ballOnlyEl.checked);
         startProcessing(path, label, mode, ballOnly);
       });
     }

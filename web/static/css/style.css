@@ -305,6 +305,13 @@ code {
   padding: 0.5rem 0.95rem;
   font-size: 0.82rem;
 }
+.file-card-mode {
+  flex-shrink: 0;
+  width: auto;
+  min-width: 8rem;
+  font-size: 0.82rem;
+  padding: 0.45rem 0.6rem;
+}
 .file-card-checkbox {
   display: flex;
   align-items: center;
@@ -315,6 +322,7 @@ code {
   user-select: none;
   flex-shrink: 0;
 }
+.file-card-ball-only-wrap.hidden { display: none; }
 .file-card-checkbox input[type="checkbox"] {
   accent-color: var(--orange, #f97316);
   margin: 0;
