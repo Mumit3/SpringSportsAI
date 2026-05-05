@@ -86,22 +86,38 @@ def _get_recorder():
 
 # ── helpers ───────────────────────────────────────────────────────────────────
 
-def _list_svo_files():
+def _list_svo_files(mode: str = "regulation"):
     """Recursively find all .svo / .svo2 files under the project root.
 
     Returns dicts with relative paths so the UI can show where each lives.
+
+    mode == "regulation": all SVOs except those inside any `mini/` directory.
+    mode == "mini":       only SVOs inside `svo_files/mini/`.
     """
     root = config.ROOT_DIR
+    mini_root = config.SVO_DIR / "mini"
     files = []
     for ext in ("*.svo", "*.svo2"):
         for p in root.rglob(ext):
-            # Skip anything under outputs/ (not useful as input)
             try:
                 rel = p.relative_to(root)
             except ValueError:
                 continue
             if rel.parts and rel.parts[0] == "outputs":
                 continue
+
+            # Detect whether this file lives under svo_files/mini/.
+            try:
+                p.relative_to(mini_root)
+                in_mini = True
+            except ValueError:
+                in_mini = False
+
+            if mode == "mini" and not in_mini:
+                continue
+            if mode == "regulation" and in_mini:
+                continue
+
             files.append({
                 "name": p.name,
                 "path": str(rel).replace("\\", "/"),
@@ -164,7 +180,13 @@ def _list_results():
     return sessions
 
 
-def _run_job(job_id: str, svo_path: str, label: str) -> None:
+def _run_job(
+    job_id:    str,
+    svo_path:  str,
+    label:     str,
+    profile:   str  = "regulation",
+    ball_only: bool = False,
+) -> None:
     """Worker function executed in a background thread."""
     q = _jobs[job_id]["queue"]
 
@@ -178,7 +200,13 @@ def _run_job(job_id: str, svo_path: str, label: str) -> None:
         with _jobs_lock:
             _jobs[job_id]["status"] = "running"
 
-        result = process_svo(svo_path, label=label, progress_cb=_progress)
+        result = process_svo(
+            svo_path,
+            label       = label,
+            progress_cb = _progress,
+            profile     = profile,
+            ball_only   = ball_only,
+        )
 
         with _jobs_lock:
             _jobs[job_id]["status"]   = "done"
@@ -212,19 +240,25 @@ def _aggregate_stats(sessions):
 
 @app.route("/")
 def index():
-    sessions  = _list_results()
-    svo_files = _list_svo_files()
+    sessions       = _list_results()
+    svo_regulation = _list_svo_files("regulation")
+    svo_mini       = _list_svo_files("mini")
     return render_template(
         "index.html",
-        svo_files = svo_files,
-        sessions  = sessions,
-        agg       = _aggregate_stats(sessions),
+        svo_files      = svo_regulation,    # backwards-compat alias
+        svo_regulation = svo_regulation,
+        svo_mini       = svo_mini,
+        sessions       = sessions,
+        agg            = _aggregate_stats(sessions),
     )
 
 
 @app.route("/api/files")
 def api_files():
-    return jsonify({"files": _list_svo_files()})
+    mode = (request.args.get("mode") or "regulation").strip()
+    if mode not in ("regulation", "mini"):
+        mode = "regulation"
+    return jsonify({"files": _list_svo_files(mode)})
 
 
 @app.route("/api/folders")
@@ -237,6 +271,11 @@ def api_process():
     data     = request.get_json(force=True)
     rel_path = (data.get("path") or data.get("filename") or "").strip()
     label    = (data.get("label") or "").strip() or _flask_default_label()
+    mode     = (data.get("mode") or "regulation").strip()
+    ball_only = bool(data.get("ball_only", False))
+
+    if mode not in ("regulation", "mini"):
+        return jsonify({"error": f"Unknown mode: {mode}"}), 400
 
     if not rel_path:
         return jsonify({"error": "No file path provided"}), 400
@@ -269,16 +308,22 @@ def api_process():
             return jsonify({"job_id": job_id, "status": "already_running"}), 200
 
         _jobs[job_id] = {
-            "status":   "pending",
-            "progress": 0.0,
-            "message":  "Queued",
-            "result":   None,
-            "queue":    queue.Queue(),
-            "svo_path": str(svo_path),
-            "label":    label,
+            "status":    "pending",
+            "progress":  0.0,
+            "message":   "Queued",
+            "result":    None,
+            "queue":     queue.Queue(),
+            "svo_path":  str(svo_path),
+            "label":     label,
+            "mode":      mode,
+            "ball_only": ball_only,
         }
 
-    t = threading.Thread(target=_run_job, args=(job_id, str(svo_path), label), daemon=True)
+    t = threading.Thread(
+        target=_run_job,
+        args=(job_id, str(svo_path), label, mode, ball_only),
+        daemon=True,
+    )
     t.start()
 
     return jsonify({"job_id": job_id, "status": "started"}), 202

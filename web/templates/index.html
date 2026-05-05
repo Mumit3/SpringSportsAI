@@ -24,21 +24,22 @@
     </div>
   </section>
 
-  <!-- ── Process SVO ──────────────────────────────────────────── -->
-  <section class="section">
+  <!-- ── Process SVO (Regulation) ─────────────────────────────── -->
+  <section class="section" data-mode="regulation">
     <div class="section-head">
-      <span class="section-label">Process SVO</span>
-      <span class="section-meta">{{ svo_files|length }} FILES</span>
+      <span class="section-label">Process SVO (Regulation)</span>
+      <span class="section-meta">{{ svo_regulation|length }} FILES</span>
     </div>
 
-    {% if svo_files %}
+    {% if svo_regulation %}
     <div class="file-grid">
-      {% for f in svo_files %}
+      {% for f in svo_regulation %}
       <div class="file-card"
            role="button"
            tabindex="0"
            data-path="{{ f.path }}"
-           data-name="{{ f.name }}">
+           data-name="{{ f.name }}"
+           data-mode="regulation">
         <div class="file-card-row">
           <div class="file-card-text">
             <span class="file-card-name" title="{{ f.name }}">{{ f.name }}</span>
@@ -57,13 +58,57 @@
     </div>
     {% else %}
     <p class="hint">
-      No <code>.svo</code> / <code>.svo2</code> files found anywhere under the
-      project. <a href="/record">Record one</a> or copy a recording into
+      No regulation <code>.svo</code> / <code>.svo2</code> files found.
+      <a href="/record">Record one</a> or copy a recording into
       <code>svo_files/</code>.
     </p>
     {% endif %}
+  </section>
 
-    <!-- Progress panel -->
+  <!-- ── Process SVO (Mini Hoop) ──────────────────────────────── -->
+  <section class="section" data-mode="mini">
+    <div class="section-head">
+      <span class="section-label">Process SVO (Mini Hoop)</span>
+      <span class="section-meta">{{ svo_mini|length }} FILES</span>
+    </div>
+
+    {% if svo_mini %}
+    <div class="file-grid">
+      {% for f in svo_mini %}
+      <div class="file-card"
+           role="button"
+           tabindex="0"
+           data-path="{{ f.path }}"
+           data-name="{{ f.name }}"
+           data-mode="mini">
+        <div class="file-card-row">
+          <div class="file-card-text">
+            <span class="file-card-name" title="{{ f.name }}">{{ f.name }}</span>
+            <span class="file-card-meta">{{ f.folder }}</span>
+          </div>
+          <span class="file-card-size">{{ f.size_mb }} MB</span>
+        </div>
+        <div class="file-card-action">
+          <input type="text" class="form-input file-card-label"
+                 placeholder="label · default: timestamp" autocomplete="off"/>
+          <label class="file-card-checkbox">
+            <input type="checkbox" class="file-card-ball-only"/>
+            Ball tracking only (skip make/miss)
+          </label>
+          <button class="btn btn-primary file-card-start">▶ START</button>
+          <button class="btn btn-secondary file-card-cancel">Cancel</button>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}
+    <p class="hint">
+      No mini-hoop SVO files found. Place recordings in
+      <code>svo_files/mini/</code> to see them here.
+    </p>
+    {% endif %}
+
+    <!-- Progress panel (shared between both sections) -->
     <div id="progress-panel" class="progress-panel hidden">
       <div class="progress-info">
         <span id="progress-msg">Starting…</span>
@@ -91,8 +136,12 @@
       </div>
       {% for s in sessions %}
       {% set sm = s.summary %}
+      {% set mode = sm.mode if sm.mode else 'regulation' %}
       <a href="/results/{{ s.job_id }}" class="sessions-row">
-        <span class="col-session">{{ s.job_id }}</span>
+        <span class="col-session">
+          <span class="mode-badge mode-{{ mode }}">{{ 'MINI' if mode == 'mini' else 'REG' }}</span>
+          {{ s.job_id }}
+        </span>
         <span class="col-num">{{ sm.total_shots }}</span>
         <span class="col-num make">{{ sm.makes }}</span>
         <span class="col-num pct">{{ sm.fg_pct }}</span>

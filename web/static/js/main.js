@@ -55,24 +55,28 @@ document.addEventListener('DOMContentLoaded', () => {
     if (startBtn) {
       startBtn.addEventListener('click', (e) => {
         e.stopPropagation();
-        const path  = card.dataset.path;
-        const label = (labelInput.value || '').trim();
-        startProcessing(path, label);
+        const path     = card.dataset.path;
+        const mode     = card.dataset.mode || 'regulation';
+        const label    = (labelInput.value || '').trim();
+        const ballOnlyEl = card.querySelector('.file-card-ball-only');
+        const ballOnly = !!(ballOnlyEl && ballOnlyEl.checked);
+        startProcessing(path, label, mode, ballOnly);
       });
     }
   });
 
-  function startProcessing(path, label) {
+  function startProcessing(path, label, mode, ballOnly) {
     cards.forEach(c => c.classList.remove('selected'));
     progressPanel.classList.remove('hidden');
-    setProgress(0, `Starting ${path}…`);
+    const tag = mode === 'mini' ? (ballOnly ? 'mini · ball-only' : 'mini') : 'regulation';
+    setProgress(0, `Starting ${path} [${tag}]…`);
 
     if (activeEventSource) activeEventSource.close();
 
     fetch('/api/process', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ path, label }),
+      body: JSON.stringify({ path, label, mode, ball_only: !!ballOnly }),
     })
     .then(r => r.json())
     .then(data => {

@@ -30,6 +30,7 @@ from pipeline import (
     ShotDetector, Analytics, Annotator,
 )
 from pipeline import config
+from pipeline.profiles import profile_scope, available as available_profiles
 
 
 def _default_label() -> str:
@@ -86,6 +87,8 @@ def process_svo(
     svo_path: str,
     label:    Optional[str] = None,
     progress_cb: Optional[Callable[[float, str], None]] = None,
+    profile:  str = "regulation",
+    ball_only: bool = False,
 ) -> dict:
     """Run the full pipeline on an SVO file.
 
@@ -94,10 +97,29 @@ def process_svo(
         label:       Tag for this run; appears in output filenames.
                      Defaults to a timestamp if not provided.
         progress_cb: Optional callback(fraction_done, status_message).
+        profile:     Named processing profile applied for the duration of
+                     this job. "regulation" (default) is no-op; "mini" applies
+                     mini-hoop overrides.
+        ball_only:   When True, skip rim detection and shot classification.
+                     Pipeline still tracks the ball and produces 2-D / 3-D
+                     trail visualisations of the entire video.
 
     Returns:
         Dict with keys: session_id, video_path, analytics_json, traces_json, summary.
     """
+    with profile_scope(profile):
+        return _process_svo_inner(
+            svo_path, label, progress_cb, profile, ball_only,
+        )
+
+
+def _process_svo_inner(
+    svo_path:    str,
+    label:       Optional[str],
+    progress_cb: Optional[Callable[[float, str], None]],
+    profile:     str,
+    ball_only:   bool,
+) -> dict:
     svo_path = Path(svo_path)
     stem     = svo_path.stem
     label    = (label or _default_label()).strip()
@@ -114,7 +136,8 @@ def process_svo(
         if progress_cb:
             progress_cb(frac, msg)
 
-    _cb(0.0, "Opening SVO file…")
+    mode_msg = f" [profile={profile}{', ball-only' if ball_only else ''}]"
+    _cb(0.0, f"Opening SVO file…{mode_msg}")
 
     # ── initialise components ─────────────────────────────────────────────────
     reader   = SVOReader(str(svo_path))
@@ -125,7 +148,12 @@ def process_svo(
         frame_width  = reader.info.width,
         frame_height = reader.info.height,
     )
-    analytics = Analytics(svo_filename=svo_path.name, fps=reader.info.fps)
+    analytics = Analytics(
+        svo_filename = svo_path.name,
+        fps          = reader.info.fps,
+        mode         = profile,
+        ball_only    = ball_only,
+    )
     annotator = Annotator(frame_width=reader.info.width, frame_height=reader.info.height)
 
     # ── video writer ──────────────────────────────────────────────────────────
@@ -172,6 +200,11 @@ def process_svo(
                 # ── detect ────────────────────────────────────────────────────────
                 ball_det, hoop_det = detector.detect(frame.image, ball_conf)
 
+                # In ball-only mode, ignore the rim entirely. Tracker, shot
+                # detector, and annotator behave as if no hoop was ever found.
+                if ball_only:
+                    hoop_det = None
+
                 # ── update 3-D hoop position (EMA until locked) ───────────────
                 if hoop_det is not None and not hoop_3d_locked:
                     new_h3d = reader.pixel_to_3d(frame.point_cloud, hoop_det.cx, hoop_det.cy)
@@ -193,9 +226,15 @@ def process_svo(
                 )
 
                 # ── detect shots ──────────────────────────────────────────────────
-                completed_shot = shot_det.update(idx, tracker_result, hoop_det, hoop_3d)
-                if completed_shot is not None:
-                    analytics.add(completed_shot)
+                if ball_only:
+                    completed_shot = None
+                    analytics.add_ball_position(
+                        tracker_result.position_2d, tracker_result.position_3d,
+                    )
+                else:
+                    completed_shot = shot_det.update(idx, tracker_result, hoop_det, hoop_3d)
+                    if completed_shot is not None:
+                        analytics.add(completed_shot)
 
                 # ── annotate + write frame ─────────────────────────────────────────
                 annotated = annotator.draw(
@@ -261,6 +300,20 @@ def _cli():
         help="Tag for this run; shows up in output filenames. "
              "Defaults to a timestamp if omitted.",
     )
+    parser.add_argument(
+        "--profile",
+        choices=available_profiles(),
+        default="regulation",
+        help="Processing profile. 'regulation' uses the default constants; "
+             "'mini' applies mini-hoop overrides (smaller ball, smaller "
+             "make cylinder, lower floor minimum).",
+    )
+    parser.add_argument(
+        "--ball-only",
+        action="store_true",
+        help="Skip rim detection and shot classification. Tracks the ball "
+             "across the whole video for trajectory visualisation only.",
+    )
     args = parser.parse_args()
 
     def _print_progress(frac: float, msg: str):
@@ -269,7 +322,13 @@ def _cli():
         bar     = "█" * filled + "░" * (bar_len - filled)
         print(f"\r[{bar}] {frac*100:5.1f}%  {msg:<40}", end="", flush=True)
 
-    process_svo(args.svo, label=args.label, progress_cb=_print_progress)
+    process_svo(
+        args.svo,
+        label       = args.label,
+        progress_cb = _print_progress,
+        profile     = args.profile,
+        ball_only   = args.ball_only,
+    )
     print()   # newline after progress bar
 
 

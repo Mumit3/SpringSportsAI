@@ -12,13 +12,34 @@ from .shot_detector import ShotEvent, Outcome
 
 class Analytics:
 
-    def __init__(self, svo_filename: str, fps: float):
+    def __init__(
+        self,
+        svo_filename: str,
+        fps: float,
+        mode: str = "regulation",
+        ball_only: bool = False,
+    ):
         self.svo_filename = svo_filename
         self.fps          = fps
+        self.mode         = mode
+        self.ball_only    = ball_only
         self.shots: List[ShotEvent] = []
+
+        # Whole-video ball trails — used when ball_only is True so the 3-D plot
+        # can render every tracked frame, not just frames that fall inside a
+        # detected shot arc. Empty in normal (shot-detection) mode.
+        self.ball_trail_2d: List = []
+        self.ball_trail_3d: List = []
 
     def add(self, shot: ShotEvent) -> None:
         self.shots.append(shot)
+
+    def add_ball_position(self, pos_2d, pos_3d) -> None:
+        """Record a per-frame ball position for ball-only mode trails."""
+        if pos_2d is not None:
+            self.ball_trail_2d.append((int(pos_2d[0]), int(pos_2d[1])))
+        if pos_3d is not None:
+            self.ball_trail_3d.append((float(pos_3d[0]), float(pos_3d[1]), float(pos_3d[2])))
 
     # ── summary ───────────────────────────────────────────────────────────────
 
@@ -32,6 +53,8 @@ class Analytics:
 
         return {
             "svo_file":         self.svo_filename,
+            "mode":             self.mode,
+            "ball_only":        self.ball_only,
             "total_shots":      total,
             "makes":            makes,
             "misses":           total - makes,
@@ -98,6 +121,19 @@ class Analytics:
                 "line": {"color": color, "width": 2},
                 "marker": {"size": 4},
             })
+
+        # Whole-video ball trail for ball-only mode
+        if self.ball_trail_2d:
+            xs = [p[0] for p in self.ball_trail_2d]
+            ys = [frame_height - p[1] for p in self.ball_trail_2d]
+            traces.append({
+                "x":    xs,
+                "y":    ys,
+                "mode": "lines+markers",
+                "name": "Ball trail",
+                "line": {"color": "#fb923c", "width": 2},
+                "marker": {"size": 3},
+            })
         return traces
 
     # ── 3-D trajectory export for Plotly ─────────────────────────────────────
@@ -132,6 +168,22 @@ class Analytics:
                 "name":   label,
                 "line":   {"color": color, "width": 4},
                 "marker": {"size": 3, "color": color},
+            })
+
+        # Whole-video ball trail for ball-only mode
+        if self.ball_trail_3d:
+            xs = [p[0] for p in self.ball_trail_3d]
+            ys = [p[2] for p in self.ball_trail_3d]
+            zs = [p[1] for p in self.ball_trail_3d]
+            traces.append({
+                "type":   "scatter3d",
+                "mode":   "lines+markers",
+                "x":      xs,
+                "y":      ys,
+                "z":      zs,
+                "name":   "Ball trail",
+                "line":   {"color": "#fb923c", "width": 3},
+                "marker": {"size": 2, "color": "#fb923c"},
             })
 
         if hoop_3d is not None:
