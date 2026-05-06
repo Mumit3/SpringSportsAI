@@ -153,6 +153,15 @@ MAKE_CYLINDER_RADIUS = 0.30
 # How many frames after shot release to keep checking for make/miss
 MAKE_CHECK_FRAMES = 60
 
+# Post-rim verification — once the ball goes below the rim, the zone
+# classifier waits this many frames AND watches the horizontal drift before
+# declaring a MAKE. This catches deflections where the ball briefly dips
+# below then flies sideways: the ball's horizontal distance from the rim
+# centre should stay within MAKE_POST_RIM_DRIFT_M for those frames, otherwise
+# it's classified as a MISS.
+MAKE_POST_RIM_FRAMES   = 3       # ~100 ms at 30 fps
+MAKE_POST_RIM_DRIFT_M  = 0.50    # 50 cm: real makes drop straight down through the net
+
 # Print per-shot diagnostic block at finalise time. Useful for figuring out
 # why a shot was classified the way it was — shows closest 3-D approach,
 # cylinder entry, 2-D bbox proximity, and which rule fired.

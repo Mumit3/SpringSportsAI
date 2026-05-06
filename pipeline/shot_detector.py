@@ -434,11 +434,13 @@ class ShotDetector:
         positions horizontally close to the hoop centre.
 
         Decision rules:
-          - MAKE: at least one ABOVE, at least one BELOW, in chronological
-            order, all near-hoop, AND no return-to-ABOVE after going BELOW.
+          - MAKE: at least one ABOVE, at least N consecutive BELOW frames in a
+            row, in chronological order, all near-hoop, no return-to-ABOVE,
+            AND the ball's max horizontal drift after going below stays
+            within MAKE_POST_RIM_DRIFT_M of the rim centre.
           - MISS (rim-out): ball reached BELOW but came back ABOVE.
-          - MISS (no entry): trajectory ended below the hoop without ever
-            coming horizontally close.
+          - MISS (deflection): ball went below but drifted sideways more than
+            MAKE_POST_RIM_DRIFT_M from the rim — a clear deflection.
           - PENDING: not enough zone evidence yet — let the velocity-based
             classifier or 2-D fallback decide.
         """
@@ -448,66 +450,91 @@ class ShotDetector:
 
         # Vertical zone margins around the rim plane.
         Z_MARGIN = 0.12   # 12 cm — wider than rim thickness so noisy depth still falls in a zone
-        # Horizontal closeness threshold — slightly wider than the strict
-        # MAKE_CYLINDER_RADIUS so a spinning ball that briefly clips the edge
-        # of the rim still counts as "near hoop".
+        # Horizontal closeness threshold for "near hoop". A point is only
+        # considered as a candidate for above/below-rim sequence when it's
+        # within this radius. Slightly wider than the strict cylinder so a
+        # spinning ball clipping the edge still counts.
         H_NEAR   = config.MAKE_CYLINDER_RADIUS * 1.3
 
-        # Build a chronological list of (zone, in_cylinder) for near-hoop points.
+        # Build a chronological list of EVERY trail point with its zone, its
+        # distance from the rim, and whether it was strictly near the hoop.
+        # We keep the far-away ones too so the post-below drift analysis can
+        # see them (a deflected ball flies AWAY from the rim, so it's
+        # important not to filter those out before measuring drift).
         sequence = []
         for p in self._current.trail_3d:
             y     = float(p[1])
             horiz = float(np.hypot(float(p[0]) - hx, float(p[2]) - hz))
-            if horiz > H_NEAR:
-                continue
-            in_cyl = horiz <= config.MAKE_CYLINDER_RADIUS
+            in_cyl   = horiz <= config.MAKE_CYLINDER_RADIUS
+            near     = horiz <= H_NEAR
             if y > hoop_y + Z_MARGIN:
                 zone = "above"
             elif y < hoop_y - Z_MARGIN:
                 zone = "below"
             else:
                 zone = "at"
-            sequence.append((zone, in_cyl))
+            sequence.append((zone, in_cyl, p, horiz, near))
 
         if not sequence:
             return Outcome.PENDING
 
-        # Did we observe BOTH above and below near the hoop?
-        zones = {z for z, _ in sequence}
-        has_above = "above" in zones
-        has_below = "below" in zones
-
-        # Walk through to detect rim-out: a "below" appearance followed later
-        # by another "above" appearance is a bounce-back. Strict MAKE requires
-        # the ball to *stay* below after first going below.
+        # Anchor: first BELOW that is also near the hoop (cylinder area).
         first_below_idx = None
-        for i, (z, _) in enumerate(sequence):
-            if z == "below":
+        for i, (z, _, _, _, near) in enumerate(sequence):
+            if z == "below" and near:
                 first_below_idx = i
                 break
 
-        bounced_back = False
+        # Bounce-back: any near-hoop ABOVE observation after the first BELOW
+        # = rim-out. (Far-away "above" points after below would just be the
+        # ball arcing back into a rebounder's hands; that's not a rim-out.)
         if first_below_idx is not None:
             for i in range(first_below_idx + 1, len(sequence)):
-                if sequence[i][0] == "above":
-                    bounced_back = True
-                    break
+                if sequence[i][0] == "above" and sequence[i][4]:
+                    self._dbg_classify_reason = (
+                        "Zone classifier: ball bounced back above hoop after "
+                        "going below (rim-out)"
+                    )
+                    return Outcome.MISS
 
-        # Was at least one of the "at"/"below" observations strictly inside
-        # the make cylinder (not just within H_NEAR)?
-        any_in_cyl = any(in_cyl for z, in_cyl in sequence if z != "above")
+        # Need at least one near-hoop ABOVE AND a first-below to consider deciding.
+        has_above_near = any(z == "above" and near for z, _, _, _, near in sequence)
+        if not (has_above_near and first_below_idx is not None):
+            return Outcome.PENDING
 
-        if has_above and has_below and not bounced_back and any_in_cyl:
+        # Wait for the post-rim trajectory to develop. After the first below
+        # frame, the ball must continue going down WITHOUT drifting sideways
+        # by more than MAKE_POST_RIM_DRIFT_M. We measure on ALL below samples
+        # post-anchor, regardless of whether they're "near" — the whole point
+        # is to detect when the ball flies away.
+        post_below = sequence[first_below_idx:]
+        below_dists = [horiz for z, _, _, horiz, _ in post_below if z == "below"]
+
+        # Need enough below frames before deciding — gives the trajectory
+        # time to reveal whether it's continuing straight down or drifting.
+        if len(below_dists) < config.MAKE_POST_RIM_FRAMES:
+            return Outcome.PENDING
+
+        max_drift = max(below_dists)
+        if max_drift > config.MAKE_POST_RIM_DRIFT_M:
             self._dbg_classify_reason = (
-                "Zone classifier: clean pass-through (above→below in cylinder)"
+                f"Zone classifier: ball drifted {max_drift:.2f} m sideways "
+                f"after rim contact (>{config.MAKE_POST_RIM_DRIFT_M:.2f} m) — deflection"
             )
-            return Outcome.MAKE
-
-        if bounced_back:
-            self._dbg_classify_reason = "Zone classifier: ball bounced back above hoop after going below (rim-out)"
             return Outcome.MISS
 
-        return Outcome.PENDING
+        # Was at least one near-hoop at/below observation strictly inside
+        # the cylinder?
+        any_in_cyl = any(in_cyl for z, in_cyl, _, _, near in sequence
+                         if z != "above" and near)
+        if not any_in_cyl:
+            return Outcome.PENDING
+
+        self._dbg_classify_reason = (
+            f"Zone classifier: clean pass-through, max post-rim drift "
+            f"{max_drift:.2f} m over {len(below_dists)} frames"
+        )
+        return Outcome.MAKE
 
     def _classify_3d(
         self,
