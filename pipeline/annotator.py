@@ -43,6 +43,7 @@ class Annotator:
         shot:      Optional[ShotEvent],
         hoop_3d:   Optional[np.ndarray],
         frame_idx: int,
+        body_keypoints_2d: Optional[List] = None,
     ) -> np.ndarray:
         out = frame.copy()
 
@@ -50,6 +51,8 @@ class Annotator:
         self._draw_trail(out, tracker.trail_2d)
         self._draw_predicted_arc(out, tracker.predicted_arc_2d)
         self._draw_ball(out, ball_det, tracker)
+        if body_keypoints_2d:
+            self._draw_skeleton(out, body_keypoints_2d)
         self._draw_hud(out, tracker, frame_idx)
         self._draw_version(out)
 
@@ -153,6 +156,66 @@ class Annotator:
             if i % 2 == 0:   # dashed effect
                 cv2.line(frame, arc[i-1], arc[i],
                          config.COLOR_ARC_PRED, 1, cv2.LINE_AA)
+
+    # ── body skeleton overlay (subtle) ────────────────────────────────────────
+
+    # BODY_18 connections — pairs of keypoint indices that form a bone.
+    _SKELETON_EDGES = [
+        (0, 1),                               # nose ↔ neck
+        (1, 2), (2, 3), (3, 4),               # right arm
+        (1, 5), (5, 6), (6, 7),               # left arm
+        (1, 8),  (8, 9),  (9, 10),            # right leg via right hip
+        (1, 11), (11, 12), (12, 13),          # left leg via left hip
+        (8, 11),                              # hip line
+    ]
+    # Wrists drawn slightly larger so the user can see what the release
+    # detector is reading from.
+    _WRIST_INDICES = (4, 7)
+
+    def _draw_skeleton(
+        self,
+        frame:        np.ndarray,
+        keypoints_2d: List,
+    ) -> None:
+        """Draw subtle skeleton overlays for each body. `keypoints_2d` is a
+        list of per-body arrays; each array shape is (N, 2) of pixel coords
+        with NaN where ZED couldn't detect a joint.
+
+        Visual style: thin desaturated lines + small dots, deliberately not
+        eye-catching so the ball/rim overlays remain the focus.
+        """
+        # Muted slate/blue-grey, low contrast against most backgrounds.
+        BONE_COLOR  = (180, 170, 150)
+        JOINT_COLOR = (200, 195, 180)
+        WRIST_COLOR = (210, 200, 180)
+
+        for kp in keypoints_2d:
+            if kp is None:
+                continue
+            # Bones
+            for a, b in self._SKELETON_EDGES:
+                if a >= len(kp) or b >= len(kp):
+                    continue
+                pa, pb = kp[a], kp[b]
+                if pa is None or pb is None:
+                    continue
+                if not (np.all(np.isfinite(pa)) and np.all(np.isfinite(pb))):
+                    continue
+                cv2.line(
+                    frame,
+                    (int(pa[0]), int(pa[1])),
+                    (int(pb[0]), int(pb[1])),
+                    BONE_COLOR, 1, cv2.LINE_AA,
+                )
+            # Joints
+            for i, p in enumerate(kp):
+                if p is None or not np.all(np.isfinite(p)):
+                    continue
+                radius = 3 if i in self._WRIST_INDICES else 2
+                color  = WRIST_COLOR if i in self._WRIST_INDICES else JOINT_COLOR
+                cv2.circle(
+                    frame, (int(p[0]), int(p[1])), radius, color, -1, cv2.LINE_AA,
+                )
 
     # ── HUD overlay (top-left corner) ─────────────────────────────────────────
 

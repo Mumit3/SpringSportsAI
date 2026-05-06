@@ -17,7 +17,7 @@ crash when pyzed isn't available.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import List, Optional, Tuple
 import numpy as np
 
@@ -52,6 +52,21 @@ class ReleaseEvent:
     release_pos_3d:  np.ndarray         # wrist position at apex
     wrist:           str                # 'left' or 'right'
     trail_3d:        List               # wrist history from rise → apex (rough ball trail)
+
+
+def extract_keypoints_2d(zed_body) -> Optional[np.ndarray]:
+    """Pull the per-keypoint 2D pixel array off a ZED body, with NaN for
+    undetected joints. Returns None if the body has no 2D data.
+
+    Used by the annotator to draw the skeleton overlay.
+    """
+    try:
+        kp_2d = np.asarray(zed_body.keypoint_2d)   # (N, 2) float
+    except (AttributeError, TypeError):
+        return None
+    if kp_2d.ndim != 2 or kp_2d.shape[1] != 2:
+        return None
+    return kp_2d
 
 
 def extract_snapshot_from_zed_body(zed_body, frame_idx: int) -> Optional[BodySnapshot]:
@@ -113,21 +128,23 @@ class BodyReleaseDetector:
         self,
         fps:               float,
         history_frames:    int   = 30,
-        min_rise_m:        float = 0.20,
-        min_decline_m:     float = 0.05,
-        cooldown_seconds:  float = 1.5,
+        min_rise_m:        float = 0.50,    # 50 cm — typical shot wrist rise is ~80 cm
+        min_decline_m:     float = 0.10,    # follow-through needs visible decline
+        min_apex_y_m:      float = 1.40,    # wrist apex must be above ~hip-height to be a real shot
+        cooldown_seconds:  float = 2.0,
     ):
         self._fps               = fps
         self._history: List[BodySnapshot] = []
         self._max_history       = history_frames
         self._min_rise          = min_rise_m
         self._min_decline       = min_decline_m
+        self._min_apex_y        = min_apex_y_m
         self._cooldown_frames   = int(fps * cooldown_seconds)
-        self._last_release_frame = -10**9
+        self._last_fire_frame   = -10**9   # the frame_idx when we last fired (not apex frame)
 
     def reset(self) -> None:
         self._history.clear()
-        self._last_release_frame = -10**9
+        self._last_fire_frame = -10**9
 
     def update(
         self,
@@ -142,11 +159,18 @@ class BodyReleaseDetector:
             while len(self._history) > self._max_history:
                 self._history.pop(0)
 
-        # Cooldown — don't fire two releases right next to each other
-        if frame_idx - self._last_release_frame < self._cooldown_frames:
+        # Cooldown anchored on when we last *fired* (current frame at the time
+        # of fire), not the apex frame in the past. This guarantees we don't
+        # detect the same peak repeatedly.
+        if frame_idx - self._last_fire_frame < self._cooldown_frames:
             return None
 
-        return self._detect_release()
+        event = self._detect_release()
+        if event is not None:
+            self._last_fire_frame = frame_idx
+            # Drop history so the same peak can't be re-detected after cooldown
+            self._history.clear()
+        return event
 
     # ── internals ─────────────────────────────────────────────────────────────
 
@@ -189,7 +213,6 @@ class BodyReleaseDetector:
         for wrist_attr in ("right_wrist", "left_wrist"):
             event = self._detect_for_wrist(wrist_attr)
             if event is not None:
-                self._last_release_frame = event.release_frame
                 return event
         return None
 
@@ -215,6 +238,13 @@ class BodyReleaseDetector:
         rise   = peak_y - samples[0][1]
         decline = peak_y - samples[-1][1]
         if rise < self._min_rise or decline < self._min_decline:
+            return None
+
+        # The apex must be physically plausible for a basketball release —
+        # below ~hip height almost certainly isn't a real shot (could be a
+        # dribble bounce or arm sway). This filter cuts out the false fires
+        # we saw at Y ≈ 0.6 m and Y ≈ -0.2 m on real data.
+        if peak_y < self._min_apex_y:
             return None
 
         release_frame = samples[peak_idx][0]

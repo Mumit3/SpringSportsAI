@@ -34,6 +34,7 @@ from pipeline import background_mask
 from pipeline.body_tracker import (
     BodyReleaseDetector,
     extract_snapshot_from_zed_body,
+    extract_keypoints_2d,
 )
 from pipeline.profiles import profile_scope, available as available_profiles
 
@@ -237,6 +238,7 @@ def _process_svo_inner(
                 # When enabled, this overrides the late Method A/B trigger by
                 # firing a shot at the body-detected release frame, with the
                 # wrist position as the release point.
+                body_keypoints_2d = []   # for skeleton overlay
                 if body_release_det is not None:
                     raw_bodies = reader.retrieve_bodies()
                     snapshots  = []
@@ -244,6 +246,9 @@ def _process_svo_inner(
                         s = extract_snapshot_from_zed_body(b, idx)
                         if s is not None:
                             snapshots.append(s)
+                        kp2d = extract_keypoints_2d(b)
+                        if kp2d is not None:
+                            body_keypoints_2d.append(kp2d)
                     release_event = body_release_det.update(idx, snapshots, hoop_3d)
                     if release_event is not None:
                         print(
@@ -295,6 +300,7 @@ def _process_svo_inner(
                 annotated = annotator.draw(
                     frame.image, ball_det, hoop_det,
                     tracker_result, completed_shot, hoop_3d, idx,
+                    body_keypoints_2d=body_keypoints_2d if body_keypoints_2d else None,
                 )
                 writer.write(annotated)
 
