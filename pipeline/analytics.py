@@ -47,9 +47,16 @@ class Analytics:
         total = len(self.shots)
         makes = sum(1 for s in self.shots if s.outcome == Outcome.MAKE)
 
-        def _avg(key):
+        def _avg(key, decimals=2):
             vals = [getattr(s, key) for s in self.shots]
-            return round(float(np.mean(vals)), 2) if vals else 0.0
+            return round(float(np.mean(vals)), decimals) if vals else 0.0
+
+        def _median(key, decimals=1):
+            """Median is more robust to outliers than mean — used for shot
+            distance because a single noisy depth sample shouldn't move the
+            displayed average."""
+            vals = [getattr(s, key) for s in self.shots]
+            return round(float(np.median(vals)), decimals) if vals else 0.0
 
         return {
             "svo_file":         self.svo_filename,
@@ -59,10 +66,10 @@ class Analytics:
             "makes":            makes,
             "misses":           total - makes,
             "fg_pct":           round(makes / total * 100, 1) if total else 0.0,
-            "avg_release_angle_deg": _avg("release_angle_deg"),
-            "avg_arc_height_m":      _avg("arc_height_m"),
-            "avg_shot_distance_m":   _avg("shot_distance_m"),
-            "avg_release_speed_mps": _avg("release_speed_mps"),
+            "avg_release_angle_deg": _avg("release_angle_deg", 1),
+            "avg_arc_height_m":      _avg("arc_height_m", 2),
+            "avg_shot_distance_m":   _median("shot_distance_m", 1),
+            "avg_release_speed_mps": _avg("release_speed_mps", 2),
         }
 
     def shot_list(self) -> List[Dict[str, Any]]:

@@ -53,8 +53,8 @@ class ShotEvent:
             "shot_id":           self.shot_id,
             "trigger_frame":     self.trigger_frame,
             "release_angle_deg": round(self.release_angle_deg, 1),
-            "arc_height_m":      round(self.arc_height_m, 3),
-            "shot_distance_m":   round(self.shot_distance_m, 3),
+            "arc_height_m":      round(self.arc_height_m, 2),
+            "shot_distance_m":   round(self.shot_distance_m, 1),
             "release_speed_mps": round(self.release_speed_mps, 2),
             "horiz_speed_mps":   round(horiz_speed, 2),
             "outcome":           self.outcome.value,
@@ -94,6 +94,12 @@ class ShotDetector:
         # Velocity-sign make/miss state — reset per shot
         self._cylinder_entry_frame: int = -1
         self._cylinder_entry_vy:    float = 0.0
+
+        # Frames since trigger when apex was reached. Used to back out a
+        # realistic release angle/speed via parabolic fit instead of trusting
+        # Kalman velocity at trigger time (which is unreliable when Method B
+        # fires late).
+        self._apex_frame_offset: int = 0
 
         # Per-shot debug stats — reset per shot
         self._dbg_trigger_method: str = ""
@@ -198,6 +204,7 @@ class ShotDetector:
         self._shot_id     += 1
         self._arc_frames   = 0
         self._apex_y3d     = tracker.position_3d[1] if tracker.position_3d is not None else 0.0
+        self._apex_frame_offset = 0
         self._state        = _ArcState.FLIGHT
         self._cylinder_entry_frame = -1
         self._cylinder_entry_vy    = 0.0
@@ -248,6 +255,7 @@ class ShotDetector:
             if tracker.position_3d[1] > self._apex_y3d:
                 self._apex_y3d      = float(tracker.position_3d[1])
                 self._current.apex_pos = tracker.position_3d.copy()
+                self._apex_frame_offset = self._arc_frames
 
         # Debug: track closest 3-D horizontal approach to hoop
         if (config.DEBUG_SHOT_DETECTION
@@ -437,9 +445,63 @@ class ShotDetector:
 
     # ── finalise ──────────────────────────────────────────────────────────────
 
+    def _recompute_release_kinematics(self) -> None:
+        """Replace Kalman-derived release angle / speed with a parabolic fit.
+
+        Uses the geometry between the release frame and the apex frame:
+        if a ball travels horizontal distance D and rises Y over time dt
+        under gravity g, the initial velocity vector is determined by
+            vy_release = g * dt   (because vy at apex = 0)
+            vx_release = D / dt
+            angle = atan2(vy, vx)
+            speed = hypot(vx, vy)
+
+        Falls back to a sensible default if the apex was never observed
+        (e.g. the trigger fired post-apex and the trail only goes downward).
+        """
+        s = self._current
+        if s is None:
+            return
+
+        FALLBACK_ANGLE = 50.0
+        FALLBACK_SPEED = 7.0   # m/s — rough average for a basketball release
+
+        if s.apex_pos is None or self._apex_frame_offset <= 0:
+            s.release_angle_deg = FALLBACK_ANGLE
+            s.release_speed_mps = FALLBACK_SPEED
+            return
+
+        dt = self._apex_frame_offset / float(self._fps)
+        if dt < 0.05:
+            s.release_angle_deg = FALLBACK_ANGLE
+            s.release_speed_mps = FALLBACK_SPEED
+            return
+
+        rel  = s.release_pos
+        apex = s.apex_pos
+        horiz_dist = float(np.hypot(apex[0] - rel[0], apex[2] - rel[2]))
+
+        GRAVITY = 9.81
+        vy = GRAVITY * dt
+        vx = horiz_dist / dt
+        speed = float(np.hypot(vx, vy))
+        angle = (90.0 if vx < 0.05
+                 else float(np.degrees(np.arctan2(vy, vx))))
+
+        # Clamp to physically reasonable range so noisy apex estimates don't
+        # produce 5° or 89° outliers.
+        angle = max(25.0, min(80.0, angle))
+        speed = max(3.0, min(12.0, speed))
+
+        s.release_angle_deg = round(angle, 1)
+        s.release_speed_mps = round(speed, 2)
+
     def _finalise(self, outcome: Outcome, frame_idx: int) -> ShotEvent:
         self._current.outcome       = outcome
         self._current.outcome_frame = frame_idx
+
+        # Override Kalman-based kinematics with a parabolic-fit estimate.
+        self._recompute_release_kinematics()
 
         if config.DEBUG_SHOT_DETECTION:
             self._print_debug(outcome, frame_idx)
