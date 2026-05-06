@@ -88,6 +88,27 @@ BALL_MIN_Y             = 0.3   # metres above floor — below this is dribble/fl
 BALL_MIN_Z             = 1.5   # metres from camera — closer than this is a hand
 BALL_HOOP_Z_TOLERANCE  = 6.0   # metres — ball's Z must be within this of hoop's Z
 
+# ── Background masking (preprocessing for YOLO) ──────────────────────────────
+# When enabled, frames are pre-processed before detection: pixels far from the
+# hoop's depth and not orange-ish are darkened. The original frame in the
+# annotated output video is unchanged — this only affects what YOLO sees.
+# Off by default; enable to test on videos where busy backgrounds are hurting
+# detection. Risk: YOLO is trained on natural images, so heavily masked input
+# can occasionally hurt instead of help — flip back to False if it regresses.
+BACKGROUND_MASK_ENABLED        = False
+BACKGROUND_DIM_FACTOR          = 0.30   # 0.0 = pitch black bg, 1.0 = unchanged
+BACKGROUND_DEPTH_NEAR          = 0.5    # always keep pixels from this distance
+BACKGROUND_DEPTH_BEHIND_HOOP   = 1.5    # keep up to N metres past hoop (catches rim, person holding it)
+BACKGROUND_DEPTH_FALLBACK_MAX  = 12.0   # cap when hoop hasn't locked yet
+BACKGROUND_MASK_DILATE_PX      = 9      # grow mask by N pixels so ball edges aren't shaved
+
+# HSV range for basketball orange — used by the background mask to keep ball
+# pixels visible regardless of depth. Tuned for typical indoor lighting; if
+# your venue has very warm/cool lights and the ball gets dimmed, widen the
+# H range slightly.
+BALL_HSV_LOWER = (5, 100, 80)
+BALL_HSV_UPPER = (25, 255, 255)
+
 # Hough Circle recovery — search for ball as a circle in Kalman-predicted ROI
 HOUGH_ROI_FACTOR      = 5.0    # ROI half-size = factor × expected radius
 HOUGH_RADIUS_MIN_FRAC = 0.7    # search radii from 0.7× to 1.4× expected

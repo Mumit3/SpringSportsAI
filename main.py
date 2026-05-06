@@ -30,6 +30,7 @@ from pipeline import (
     ShotDetector, Analytics, Annotator,
 )
 from pipeline import config
+from pipeline import background_mask
 from pipeline.profiles import profile_scope, available as available_profiles
 
 
@@ -198,7 +199,13 @@ def _process_svo_inner(
                 )
 
                 # ── detect ────────────────────────────────────────────────────────
-                ball_det, hoop_det = detector.detect(frame.image, ball_conf)
+                # Optional: dim non-foreground pixels before YOLO sees the
+                # frame. The original frame.image is unchanged — annotator and
+                # writer still see the natural-looking image.
+                det_image = background_mask.apply(
+                    frame.image, frame.point_cloud, hoop_3d,
+                )
+                ball_det, hoop_det = detector.detect(det_image, ball_conf)
 
                 # In ball-only mode, ignore the rim entirely. Tracker, shot
                 # detector, and annotator behave as if no hoop was ever found.
