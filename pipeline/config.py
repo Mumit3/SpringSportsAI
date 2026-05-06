@@ -109,6 +109,19 @@ BACKGROUND_MASK_DILATE_PX      = 9      # grow mask by N pixels so ball edges ar
 BALL_HSV_LOWER = (5, 100, 80)
 BALL_HSV_UPPER = (25, 255, 255)
 
+# ── ZED body tracking ────────────────────────────────────────────────────────
+# When enabled, the pipeline runs ZED's body tracking module each frame,
+# identifies the shooter (the body furthest from the rim), and detects the
+# release moment from wrist motion. Detected release events override the
+# late Method A / Method B triggers — the shot's release_pos becomes the
+# wrist position at apex, and the visual trail is backfilled with wrist
+# history so the upward arc is visible.
+#
+# Cost: roughly +50–100 ms per frame on Jetson Xavier NX. Falls back
+# gracefully if the body tracking module isn't available on this machine.
+# Off by default — flip to True to enable.
+BODY_TRACKING_ENABLED = True
+
 # Hough Circle recovery — search for ball as a circle in Kalman-predicted ROI
 HOUGH_ROI_FACTOR      = 5.0    # ROI half-size = factor × expected radius
 HOUGH_RADIUS_MIN_FRAC = 0.7    # search radii from 0.7× to 1.4× expected
