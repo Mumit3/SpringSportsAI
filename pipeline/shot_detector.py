@@ -403,7 +403,16 @@ class ShotDetector:
         hoop_det: Optional[Detection],
         hoop_3d:  Optional[np.ndarray],
     ) -> Outcome:
-        # Primary: 3-D cylinder through hoop plane
+        # Primary: zone-based classification using observed trail positions.
+        # Looks at the trajectory through the hoop plane (above → at → below)
+        # rather than trusting Kalman velocity at any single frame, which has
+        # been unreliable in our diagnostic traces.
+        if hoop_3d is not None and self._current.trail_3d:
+            outcome = self._classify_by_zones(hoop_3d)
+            if outcome != Outcome.PENDING:
+                return outcome
+
+        # Secondary: 3-D cylinder through hoop plane (existing velocity-based)
         if tracker.position_3d is not None and hoop_3d is not None:
             outcome = self._classify_3d(tracker.position_3d, tracker.velocity_3d, hoop_3d)
             if outcome != Outcome.PENDING:
@@ -414,6 +423,89 @@ class ShotDetector:
             outcome = self._classify_2d(tracker, hoop_det)
             if outcome != Outcome.PENDING:
                 return outcome
+
+        return Outcome.PENDING
+
+    def _classify_by_zones(self, hoop_3d: np.ndarray) -> Outcome:
+        """Classify by the trajectory's pass-through pattern at the rim plane.
+
+        Walks the shot's trail of observed 3-D positions and tags each one by
+        zone: ABOVE the rim, AT the rim, or BELOW the rim — but ONLY for
+        positions horizontally close to the hoop centre.
+
+        Decision rules:
+          - MAKE: at least one ABOVE, at least one BELOW, in chronological
+            order, all near-hoop, AND no return-to-ABOVE after going BELOW.
+          - MISS (rim-out): ball reached BELOW but came back ABOVE.
+          - MISS (no entry): trajectory ended below the hoop without ever
+            coming horizontally close.
+          - PENDING: not enough zone evidence yet — let the velocity-based
+            classifier or 2-D fallback decide.
+        """
+        hoop_y = float(hoop_3d[1])
+        hx     = float(hoop_3d[0])
+        hz     = float(hoop_3d[2])
+
+        # Vertical zone margins around the rim plane.
+        Z_MARGIN = 0.12   # 12 cm — wider than rim thickness so noisy depth still falls in a zone
+        # Horizontal closeness threshold — slightly wider than the strict
+        # MAKE_CYLINDER_RADIUS so a spinning ball that briefly clips the edge
+        # of the rim still counts as "near hoop".
+        H_NEAR   = config.MAKE_CYLINDER_RADIUS * 1.3
+
+        # Build a chronological list of (zone, in_cylinder) for near-hoop points.
+        sequence = []
+        for p in self._current.trail_3d:
+            y     = float(p[1])
+            horiz = float(np.hypot(float(p[0]) - hx, float(p[2]) - hz))
+            if horiz > H_NEAR:
+                continue
+            in_cyl = horiz <= config.MAKE_CYLINDER_RADIUS
+            if y > hoop_y + Z_MARGIN:
+                zone = "above"
+            elif y < hoop_y - Z_MARGIN:
+                zone = "below"
+            else:
+                zone = "at"
+            sequence.append((zone, in_cyl))
+
+        if not sequence:
+            return Outcome.PENDING
+
+        # Did we observe BOTH above and below near the hoop?
+        zones = {z for z, _ in sequence}
+        has_above = "above" in zones
+        has_below = "below" in zones
+
+        # Walk through to detect rim-out: a "below" appearance followed later
+        # by another "above" appearance is a bounce-back. Strict MAKE requires
+        # the ball to *stay* below after first going below.
+        first_below_idx = None
+        for i, (z, _) in enumerate(sequence):
+            if z == "below":
+                first_below_idx = i
+                break
+
+        bounced_back = False
+        if first_below_idx is not None:
+            for i in range(first_below_idx + 1, len(sequence)):
+                if sequence[i][0] == "above":
+                    bounced_back = True
+                    break
+
+        # Was at least one of the "at"/"below" observations strictly inside
+        # the make cylinder (not just within H_NEAR)?
+        any_in_cyl = any(in_cyl for z, in_cyl in sequence if z != "above")
+
+        if has_above and has_below and not bounced_back and any_in_cyl:
+            self._dbg_classify_reason = (
+                "Zone classifier: clean pass-through (above→below in cylinder)"
+            )
+            return Outcome.MAKE
+
+        if bounced_back:
+            self._dbg_classify_reason = "Zone classifier: ball bounced back above hoop after going below (rim-out)"
+            return Outcome.MISS
 
         return Outcome.PENDING
 

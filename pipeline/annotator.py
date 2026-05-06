@@ -31,6 +31,11 @@ class Annotator:
         self._result_display_frames = 0
         self._last_outcome: Optional[Outcome] = None
         self._last_metrics: Optional[dict]    = None
+        # Counter of consecutive frames where the ball appears to be back in
+        # the shooter's hands (low + far from hoop). When this passes a small
+        # threshold we clear the make/miss display early so the next shot
+        # starts with no stale overlay.
+        self._post_shot_pickup_count = 0
 
     # ── main entry ────────────────────────────────────────────────────────────
 
@@ -60,12 +65,42 @@ class Annotator:
             self._result_display_frames = 90   # show result for 3 s @ 30 fps
             self._last_outcome = shot.outcome
             self._last_metrics = shot.to_dict()
+            self._post_shot_pickup_count = 0   # fresh shot — reset pickup detector
+
+        # Early-clear the result overlay once the shooter has the ball back.
+        # "Back in hand" is approximated as: ball below the rim by >0.5 m AND
+        # >1.0 m horizontally away from the hoop. We require this for several
+        # consecutive frames so a momentary detection blip doesn't clear early.
+        if self._result_display_frames > 0:
+            if self._is_ball_picked_up(tracker, hoop_3d):
+                self._post_shot_pickup_count += 1
+                if self._post_shot_pickup_count >= 3:
+                    self._result_display_frames = 0
+                    self._post_shot_pickup_count = 0
+            else:
+                self._post_shot_pickup_count = 0
 
         if self._result_display_frames > 0:
             self._draw_shot_result(out)
             self._result_display_frames -= 1
 
         return out
+
+    def _is_ball_picked_up(
+        self,
+        tracker: TrackerResult,
+        hoop_3d: Optional[np.ndarray],
+    ) -> bool:
+        """Heuristic for "shooter has the ball back" — used to clear the
+        previous shot's make/miss display before the timeout expires."""
+        if tracker.position_3d is None or hoop_3d is None:
+            return False
+        bx, by, bz = float(tracker.position_3d[0]), float(tracker.position_3d[1]), float(tracker.position_3d[2])
+        hx, hy, hz = float(hoop_3d[0]), float(hoop_3d[1]), float(hoop_3d[2])
+        below_rim    = by < hy - 0.5
+        horiz_dist   = float(np.hypot(bx - hx, bz - hz))
+        far_from_hoop = horiz_dist > 1.0
+        return below_rim and far_from_hoop
 
     # ── hoop ──────────────────────────────────────────────────────────────────
 
