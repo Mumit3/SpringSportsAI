@@ -44,7 +44,7 @@ import sys
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from pipeline import config
-from main import process_svo
+from main import process_svo, CancelledError
 
 try:
     from pipeline.zed_recorder import ZedRecorder
@@ -204,6 +204,24 @@ def _list_results():
     return sessions
 
 
+def _delete_partial_outputs(svo_path: str, label: str) -> None:
+    """Remove any output files created by an in-progress job that got cancelled."""
+    stem    = Path(svo_path).stem
+    session = f"{stem}__{label}"
+    video_path = config.OUTPUT_DIR / "videos" / f"{session}.mp4"
+    data_dir   = config.OUTPUT_DIR / "data"   / session
+    try:
+        if video_path.exists():
+            video_path.unlink()
+    except OSError as e:
+        print(f"[Cancel] Could not delete {video_path}: {e}")
+    try:
+        if data_dir.exists():
+            shutil.rmtree(data_dir, ignore_errors=True)
+    except OSError as e:
+        print(f"[Cancel] Could not remove {data_dir}: {e}")
+
+
 def _run_job(
     job_id:    str,
     svo_path:  str,
@@ -213,6 +231,10 @@ def _run_job(
 ) -> None:
     """Worker function executed in a background thread."""
     q = _jobs[job_id]["queue"]
+
+    cancel_event = _jobs[job_id]["cancel_event"]
+    def _cancel_check() -> bool:
+        return cancel_event.is_set()
 
     def _progress(frac: float, msg: str = ""):
         with _jobs_lock:
@@ -226,10 +248,11 @@ def _run_job(
 
         result = process_svo(
             svo_path,
-            label       = label,
-            progress_cb = _progress,
-            profile     = profile,
-            ball_only   = ball_only,
+            label        = label,
+            progress_cb  = _progress,
+            profile      = profile,
+            ball_only    = ball_only,
+            cancel_check = _cancel_check,
         )
 
         with _jobs_lock:
@@ -238,6 +261,14 @@ def _run_job(
             _jobs[job_id]["result"]   = result
 
         q.put({"progress": 1.0, "message": "done", "status": "done"})
+
+    except CancelledError:
+        _delete_partial_outputs(svo_path, label)
+        with _jobs_lock:
+            _jobs[job_id]["status"]  = "cancelled"
+            _jobs[job_id]["message"] = "Cancelled by user"
+        q.put({"progress": 0.0, "message": "Cancelled — partial files deleted",
+               "status": "cancelled"})
 
     except Exception as exc:
         with _jobs_lock:
@@ -330,15 +361,16 @@ def api_process():
             return jsonify({"job_id": job_id, "status": "already_running"}), 200
 
         _jobs[job_id] = {
-            "status":    "pending",
-            "progress":  0.0,
-            "message":   "Queued",
-            "result":    None,
-            "queue":     queue.Queue(),
-            "svo_path":  str(svo_path),
-            "label":     label,
-            "mode":      mode,
-            "ball_only": ball_only,
+            "status":       "pending",
+            "progress":     0.0,
+            "message":      "Queued",
+            "result":       None,
+            "queue":        queue.Queue(),
+            "svo_path":     str(svo_path),
+            "label":        label,
+            "mode":         mode,
+            "ball_only":    ball_only,
+            "cancel_event": threading.Event(),
         }
 
     t = threading.Thread(
@@ -349,6 +381,23 @@ def api_process():
     t.start()
 
     return jsonify({"job_id": job_id, "status": "started"}), 202
+
+
+@app.route("/api/process/cancel/<job_id>", methods=["POST"])
+def api_cancel(job_id: str):
+    """Signal a running job to stop. The worker will exit at the next loop
+    iteration, delete its partial output, and emit a `cancelled` SSE event."""
+    if job_id not in _jobs:
+        abort(404)
+    job = _jobs[job_id]
+    status = job.get("status")
+    if status not in ("running", "pending"):
+        return jsonify({
+            "ok":    False,
+            "error": f"Job is not running (status={status}); cannot cancel.",
+        }), 409
+    job["cancel_event"].set()
+    return jsonify({"ok": True, "job_id": job_id}), 202
 
 
 @app.route("/api/status/<job_id>")
@@ -363,7 +412,7 @@ def api_status_sse(job_id: str):
             try:
                 msg = q.get(timeout=30)
                 yield f"data: {json.dumps(msg)}\n\n"
-                if msg.get("status") in ("done", "error"):
+                if msg.get("status") in ("done", "error", "cancelled"):
                     break
             except queue.Empty:
                 # heartbeat

@@ -31,7 +31,17 @@ from pipeline import (
 )
 from pipeline import config
 from pipeline import background_mask
+from pipeline.body_tracker import (
+    BodyReleaseDetector,
+    extract_snapshot_from_zed_body,
+)
 from pipeline.profiles import profile_scope, available as available_profiles
+
+
+class CancelledError(Exception):
+    """Raised inside the pipeline when the caller signals a cancel.
+    Caught by the Flask job runner so it can clean up partial output."""
+    pass
 
 
 def _default_label() -> str:
@@ -90,6 +100,7 @@ def process_svo(
     progress_cb: Optional[Callable[[float, str], None]] = None,
     profile:  str = "regulation",
     ball_only: bool = False,
+    cancel_check: Optional[Callable[[], bool]] = None,
 ) -> dict:
     """Run the full pipeline on an SVO file.
 
@@ -110,16 +121,17 @@ def process_svo(
     """
     with profile_scope(profile):
         return _process_svo_inner(
-            svo_path, label, progress_cb, profile, ball_only,
+            svo_path, label, progress_cb, profile, ball_only, cancel_check,
         )
 
 
 def _process_svo_inner(
-    svo_path:    str,
-    label:       Optional[str],
-    progress_cb: Optional[Callable[[float, str], None]],
-    profile:     str,
-    ball_only:   bool,
+    svo_path:     str,
+    label:        Optional[str],
+    progress_cb:  Optional[Callable[[float, str], None]],
+    profile:      str,
+    ball_only:    bool,
+    cancel_check: Optional[Callable[[], bool]] = None,
 ) -> dict:
     svo_path = Path(svo_path)
     stem     = svo_path.stem
@@ -141,7 +153,12 @@ def _process_svo_inner(
     _cb(0.0, f"Opening SVO file…{mode_msg}")
 
     # ── initialise components ─────────────────────────────────────────────────
-    reader   = SVOReader(str(svo_path))
+    body_tracking_wanted = bool(config.BODY_TRACKING_ENABLED) and not ball_only
+    reader   = SVOReader(str(svo_path), enable_body_tracking=body_tracking_wanted)
+    body_release_det = (
+        BodyReleaseDetector(fps=reader.info.fps)
+        if reader.body_tracking_enabled else None
+    )
     detector = BallHoopDetector()
     tracker  = BallTracker(fps=reader.info.fps, reader=reader)
     shot_det = ShotDetector(
@@ -191,6 +208,10 @@ def _process_svo_inner(
             for frame in reader:
                 idx = frame.index
 
+                # ── cancel check (caller can abort mid-pipeline) ──────────────────
+                if cancel_check is not None and cancel_check():
+                    raise CancelledError("cancelled by caller")
+
                 # ── dynamic ball confidence during flight ─────────────────────────
                 ball_conf = (
                     config.BALL_CONF_FLIGHT
@@ -211,6 +232,33 @@ def _process_svo_inner(
                 # detector, and annotator behave as if no hoop was ever found.
                 if ball_only:
                     hoop_det = None
+
+                # ── body tracking — detect release from wrist motion ──────────────
+                # When enabled, this overrides the late Method A/B trigger by
+                # firing a shot at the body-detected release frame, with the
+                # wrist position as the release point.
+                if body_release_det is not None:
+                    raw_bodies = reader.retrieve_bodies()
+                    snapshots  = []
+                    for b in raw_bodies:
+                        s = extract_snapshot_from_zed_body(b, idx)
+                        if s is not None:
+                            snapshots.append(s)
+                    release_event = body_release_det.update(idx, snapshots, hoop_3d)
+                    if release_event is not None:
+                        print(
+                            f"[BodyRelease] Shot release detected at frame "
+                            f"{release_event.release_frame} via {release_event.wrist} "
+                            f"wrist; pos = ({release_event.release_pos_3d[0]:.2f}, "
+                            f"{release_event.release_pos_3d[1]:.2f}, "
+                            f"{release_event.release_pos_3d[2]:.2f})"
+                        )
+                        shot_det.inject_release(
+                            frame_idx   = release_event.release_frame,
+                            release_pos = release_event.release_pos_3d,
+                            hoop_3d     = hoop_3d,
+                            wrist_trail = release_event.trail_3d,
+                        )
 
                 # ── update 3-D hoop position (EMA until locked) ───────────────
                 if hoop_det is not None and not hoop_3d_locked:

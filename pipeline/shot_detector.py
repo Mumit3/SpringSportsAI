@@ -120,6 +120,76 @@ class ShotDetector:
 
     # ── public ────────────────────────────────────────────────────────────────
 
+    def inject_release(
+        self,
+        frame_idx:    int,
+        release_pos:  np.ndarray,
+        hoop_3d:      Optional[np.ndarray],
+        wrist_trail:  Optional[List] = None,
+    ) -> None:
+        """Manually start a shot at the given (release frame, release position).
+
+        Used when an external signal (body tracking) detects the release event
+        more reliably than ball-based heuristics. The pipeline's normal
+        Method A / Method B triggers are skipped while this shot is in flight,
+        and the cooldown afterward prevents them from firing on the same shot.
+
+        `wrist_trail` is an optional list of recent wrist 3D positions leading
+        up to release. If supplied, those points are prepended to the shot's
+        trail so the visualisation shows the full release-to-rim arc, not
+        just the descent.
+        """
+        # Don't override an in-progress shot.
+        if self._state != _ArcState.IDLE:
+            return
+        if self._cooldown > 0:
+            return
+
+        # Reset per-shot debug stats
+        self._dbg_trigger_method  = "Body (wrist apex)"
+        self._dbg_min_horiz_dist  = float("inf")
+        self._dbg_min_horiz_frame = -1
+        self._dbg_min_horiz_descending = False
+        self._dbg_min_2d_dist     = float("inf")
+        self._dbg_was_in_2d_bbox  = False
+        self._dbg_hoop_3d         = hoop_3d.copy() if hoop_3d is not None else None
+        self._dbg_hoop_bbox       = None
+        self._dbg_classify_reason = ""
+
+        self._shot_id            += 1
+        self._arc_frames          = 0
+        self._apex_y3d            = float(release_pos[1])
+        self._apex_frame_offset   = 0
+        self._state               = _ArcState.FLIGHT
+        self._cylinder_entry_frame = -1
+        self._cylinder_entry_vy    = 0.0
+
+        dist = 0.0
+        if hoop_3d is not None:
+            dist = float(np.linalg.norm(release_pos - hoop_3d))
+
+        # Velocity at release isn't measured directly here — the parabolic-fit
+        # in _finalise() will recompute angle/speed from release_pos and apex.
+        # Seed with zeros so downstream code has valid floats to read.
+        self._current = ShotEvent(
+            shot_id           = self._shot_id,
+            trigger_frame     = frame_idx,
+            release_frame     = frame_idx,
+            release_pos       = release_pos.astype(float),
+            release_vel       = np.zeros(3, dtype=float),
+            apex_pos          = release_pos.astype(float),
+            release_angle_deg = 0.0,
+            arc_height_m      = 0.0,
+            shot_distance_m   = dist,
+            release_speed_mps = 0.0,
+        )
+
+        if wrist_trail:
+            for p in wrist_trail:
+                self._current.trail_3d.append(
+                    (float(p[0]), float(p[1]), float(p[2]))
+                )
+
     def update(
         self,
         frame_idx:  int,

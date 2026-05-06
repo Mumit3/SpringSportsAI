@@ -51,11 +51,12 @@ class SVOReader:
                 process(frame)
     """
 
-    def __init__(self, svo_path: str):
+    def __init__(self, svo_path: str, enable_body_tracking: bool = False):
         if not ZED_AVAILABLE:
             raise RuntimeError("pyzed is not installed. Install ZED SDK 5.x first.")
 
         self._zed = sl.Camera()
+        self._body_tracking_ready = False
 
         init = sl.InitParameters()
         init.set_from_svo_file(str(svo_path))
@@ -97,6 +98,36 @@ class SVOReader:
         self._mat_img = sl.Mat()
         self._mat_dep = sl.Mat()
         self._mat_pc  = sl.Mat()
+
+        # Optional ZED body tracking. We enable it lazily so SVOReader works
+        # with or without the body tracking module on this Jetson — if the
+        # SDK rejects enable_body_tracking we just disable the feature and
+        # the pipeline falls back to ball-only detection.
+        if enable_body_tracking:
+            try:
+                # Positional tracking is required for body tracking in 3D world coords.
+                tracking_params = sl.PositionalTrackingParameters()
+                err = self._zed.enable_positional_tracking(tracking_params)
+                if err != sl.ERROR_CODE.SUCCESS:
+                    print(f"[SVOReader] positional tracking failed: {err} — body tracking disabled")
+                else:
+                    body_params = sl.BodyTrackingParameters()
+                    body_params.enable_tracking      = True
+                    body_params.enable_body_fitting  = False
+                    body_params.detection_model      = sl.BODY_TRACKING_MODEL.HUMAN_BODY_MEDIUM
+                    body_params.body_format          = sl.BODY_FORMAT.BODY_18
+                    err = self._zed.enable_body_tracking(body_params)
+                    if err != sl.ERROR_CODE.SUCCESS:
+                        print(f"[SVOReader] body tracking enable failed: {err} — disabled")
+                    else:
+                        self._body_tracking_ready = True
+                        self._bodies_runtime = sl.BodyTrackingRuntimeParameters()
+                        self._bodies_runtime.detection_confidence_threshold = 40
+                        self._bodies          = sl.Bodies()
+                        print("[SVOReader] body tracking enabled (BODY_18, MEDIUM model)")
+            except Exception as e:
+                print(f"[SVOReader] body tracking init exception: {e} — disabled")
+                self._body_tracking_ready = False
 
     # ── iteration ─────────────────────────────────────────────────────────────
 
@@ -165,6 +196,28 @@ class SVOReader:
         if len(ok) < 4:
             return None
         return np.median(ok, axis=0)
+
+    def retrieve_bodies(self) -> list:
+        """Return the list of detected bodies for the most recently grabbed
+        frame. Empty list if body tracking wasn't enabled or no bodies detected.
+
+        Each item is a `pyzed.sl.BodyData`; the body_tracker module knows how
+        to convert these into our snapshot format.
+        """
+        if not self._body_tracking_ready:
+            return []
+        try:
+            err = self._zed.retrieve_bodies(self._bodies, self._bodies_runtime)
+            if err != sl.ERROR_CODE.SUCCESS:
+                return []
+            return list(self._bodies.body_list)
+        except Exception as e:
+            print(f"[SVOReader] retrieve_bodies failed: {e}")
+            return []
+
+    @property
+    def body_tracking_enabled(self) -> bool:
+        return self._body_tracking_ready
 
     def project_3d_to_2d(self, xyz: np.ndarray) -> Optional[Tuple[int, int]]:
         """Project world point back to image pixel using camera intrinsics.

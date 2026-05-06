@@ -10,8 +10,10 @@ document.addEventListener('DOMContentLoaded', () => {
   const progressBar    = document.getElementById('progress-bar');
   const progressMsg    = document.getElementById('progress-msg');
   const progressPct    = document.getElementById('progress-pct');
+  const cancelBtn      = document.getElementById('cancel-btn');
 
   let activeEventSource = null;
+  let activeJobId       = null;
 
   cards.forEach(card => {
     const labelInput  = card.querySelector('.file-card-label');
@@ -104,6 +106,7 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   function listenForProgress(jobId) {
+    activeJobId       = jobId;
     activeEventSource = new EventSource(`/api/status/${jobId}`);
 
     activeEventSource.onmessage = (event) => {
@@ -114,11 +117,23 @@ document.addEventListener('DOMContentLoaded', () => {
         setProgress(pct, msg.message || '');
         if (msg.status === 'done') {
           activeEventSource.close();
+          activeJobId = null;
           setProgress(100, 'Processing complete — redirecting…');
           setTimeout(() => { window.location.href = `/results/${jobId}`; }, 800);
         } else if (msg.status === 'error') {
           activeEventSource.close();
+          activeJobId = null;
           setProgress(0, `Error: ${msg.message}`);
+        } else if (msg.status === 'cancelled') {
+          activeEventSource.close();
+          activeJobId = null;
+          setProgress(0, 'Cancelled — partial files deleted.');
+          // Return to the file list (current folder), drop ?job=...
+          setTimeout(() => {
+            const url = new URL(window.location.href);
+            url.searchParams.delete('job');
+            window.location.href = url.toString();
+          }, 1000);
         }
       } catch (e) { /* ignore */ }
     };
@@ -128,6 +143,37 @@ document.addEventListener('DOMContentLoaded', () => {
         .then(r => { if (r.ok) window.location.href = `/results/${jobId}`; })
         .catch(() => {});
     };
+  }
+
+  if (cancelBtn) {
+    cancelBtn.addEventListener('click', async () => {
+      if (!activeJobId) return;
+      const ok = window.confirm(
+        'Cancel processing?\n\n' +
+        'The pipeline will stop and any partial output files will be deleted.\n' +
+        'This cannot be undone.'
+      );
+      if (!ok) return;
+      cancelBtn.disabled = true;
+      cancelBtn.textContent = 'Cancelling…';
+      try {
+        const r = await fetch(`/api/process/cancel/${encodeURIComponent(activeJobId)}`, {
+          method: 'POST',
+        });
+        if (!r.ok) {
+          const data = await r.json().catch(() => ({}));
+          window.alert(data.error || 'Failed to cancel');
+          cancelBtn.disabled = false;
+          cancelBtn.textContent = '✕ Cancel';
+        }
+        // On success, the SSE will deliver `status: cancelled` and JS will
+        // redirect to the file list.
+      } catch (e) {
+        window.alert('Network error: ' + e);
+        cancelBtn.disabled = false;
+        cancelBtn.textContent = '✕ Cancel';
+      }
+    });
   }
 
   function setProgress(pct, msg) {

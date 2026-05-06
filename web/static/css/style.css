@@ -459,10 +459,13 @@ code {
 .progress-info {
   display: flex;
   justify-content: space-between;
+  align-items: center;
+  gap: 0.6rem;
   font-size: 0.85rem;
   color: var(--text-muted);
   margin-bottom: 0.4rem;
 }
+.progress-info #cancel-btn { margin-left: auto; flex-shrink: 0; }
 .progress-bar-track {
   height: 8px;
   background: var(--border);
