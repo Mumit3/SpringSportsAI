@@ -116,9 +116,21 @@ class ShotDetector:
         # context when a shot fires, so we can see why Method A did/didn't fire.
         self._dbg_frame_buf: List[tuple] = []
 
+        # Rolling buffer of REAL ball observations (yolo / OF / hough — not
+        # Kalman fills). Used by Method C to compute trajectory direction
+        # from observed positions, since Kalman vy has been unreliable.
+        self._obs_buf: List[tuple] = []   # (frame_idx, pos_3d)
+
         self.completed_shots: List[ShotEvent] = []
 
     # ── public ────────────────────────────────────────────────────────────────
+
+    @property
+    def is_in_flight(self) -> bool:
+        """True while a shot is being tracked (between trigger and finalise).
+        Used by the annotator to clear the previous shot's banner the moment
+        a new shot starts."""
+        return self._state == _ArcState.FLIGHT
 
     def inject_release(
         self,
@@ -211,6 +223,14 @@ class ShotDetector:
             if len(self._dbg_frame_buf) > config.DEBUG_PRETRIGGER_FRAMES:
                 self._dbg_frame_buf.pop(0)
 
+        # Real-observation buffer for Method C — only count frames where the
+        # ball was actually seen, not Kalman fills. Limited to a short window.
+        if (tracker.source in ("yolo", "optical_flow", "hough")
+                and tracker.position_3d is not None):
+            self._obs_buf.append((frame_idx, tracker.position_3d.copy()))
+            if len(self._obs_buf) > config.SHOT_TRIGGER_OBS_FRAMES * 2:
+                self._obs_buf.pop(0)
+
         # Track 2-D ball y position for pixel-rise method
         if tracker.position_2d is not None:
             self._ball_y_window.append(tracker.position_2d[1])
@@ -223,6 +243,70 @@ class ShotDetector:
             return self._track_arc(frame_idx, tracker, hoop_det, hoop_3d)
 
     # ── trigger logic ─────────────────────────────────────────────────────────
+
+    def _check_method_c(
+        self,
+        tracker: TrackerResult,
+        hoop_3d: np.ndarray,
+    ) -> bool:
+        """Method C: ball is moving up AND toward the rim from a distance.
+
+        Uses real ball observations (yolo / OF / hough — never Kalman fills)
+        across a short window to compute observed velocity. Returns True if
+        the trajectory looks like a real shot from outside layup range.
+        """
+        # Need the current ball state and a recent observation to compare against.
+        if tracker.position_3d is None:
+            return False
+        if tracker.source not in ("yolo", "optical_flow", "hough"):
+            return False
+
+        N = config.SHOT_TRIGGER_OBS_FRAMES
+        # Pick a sample at least N frames in the past from the current one.
+        if len(self._obs_buf) < 2:
+            return False
+        latest_frame, latest_pos = self._obs_buf[-1]
+        # Find the oldest observation that's at least 2 frames back; ideally N back.
+        ref = None
+        for entry in self._obs_buf:
+            f, p = entry
+            if latest_frame - f >= 2:
+                ref = entry
+                if latest_frame - f >= N:
+                    break
+        if ref is None:
+            return False
+        ref_frame, ref_pos = ref
+
+        dt = (latest_frame - ref_frame) / float(self._fps)
+        if dt <= 0:
+            return False
+
+        # Observed velocity over the window.
+        vel = (latest_pos - ref_pos) / dt
+        vy = float(vel[1])
+
+        # Distance from the latest observation to the rim (horizontal).
+        dx = float(hoop_3d[0]) - float(latest_pos[0])
+        dz = float(hoop_3d[2]) - float(latest_pos[2])
+        horiz_dist_to_rim = float(np.hypot(dx, dz))
+        if horiz_dist_to_rim < config.SHOT_TRIGGER_MIN_RIM_DIST_M:
+            return False     # too close to rim — could be a layup or a near-rim false positive
+
+        # Ball must be ascending.
+        if vy < config.SHOT_TRIGGER_MIN_VY_MPS:
+            return False
+
+        # Horizontal velocity component pointing toward the rim.
+        if horiz_dist_to_rim < 1e-3:
+            return False
+        rim_dir_x = dx / horiz_dist_to_rim
+        rim_dir_z = dz / horiz_dist_to_rim
+        toward_rim = float(vel[0]) * rim_dir_x + float(vel[2]) * rim_dir_z
+        if toward_rim < config.SHOT_TRIGGER_MIN_TOWARD_MPS:
+            return False
+
+        return True
 
     def _check_trigger(
         self,
@@ -250,6 +334,16 @@ class ShotDetector:
             if -rise_px / self._fh > config.PIXEL_RISE_THRESHOLD:
                 triggered = True
                 method = "B (2D rise)"
+
+        # Method C: trajectory-direction. Fires when the ball is observed
+        # rising AND moving toward the rim from a distance — addresses cases
+        # where body tracking misses the release and Methods A/B fire too
+        # late. Uses real observations (yolo/OF/hough), not Kalman drift.
+        if not triggered and hoop_3d is not None:
+            method_c = self._check_method_c(tracker, hoop_3d)
+            if method_c:
+                triggered = True
+                method = "C (trajectory)"
 
         if not triggered:
             return None
@@ -420,7 +514,7 @@ class ShotDetector:
 
         # Fallback: 2-D bounding-box overlap with downward velocity
         if tracker.position_2d is not None and hoop_det is not None:
-            outcome = self._classify_2d(tracker, hoop_det)
+            outcome = self._classify_2d(tracker, hoop_det, hoop_3d)
             if outcome != Outcome.PENDING:
                 return outcome
 
@@ -523,11 +617,13 @@ class ShotDetector:
             )
             return Outcome.MISS
 
-        # Was at least one near-hoop at/below observation strictly inside
-        # the cylinder?
-        any_in_cyl = any(in_cyl for z, in_cyl, _, _, near in sequence
-                         if z != "above" and near)
-        if not any_in_cyl:
+        # Tighter MAKE gate: at least one BELOW observation must be strictly
+        # inside the cylinder (not just within H_NEAR). "Below the rim while
+        # in cylinder" is a much stronger MAKE signal than "below somewhere
+        # near the rim" — it specifically means the ball passed THROUGH.
+        any_below_in_cyl = any(in_cyl for z, in_cyl, _, _, near in sequence
+                               if z == "below" and near)
+        if not any_below_in_cyl:
             return Outcome.PENDING
 
         self._dbg_classify_reason = (
@@ -611,8 +707,12 @@ class ShotDetector:
         self,
         tracker:  TrackerResult,
         hoop_det: Detection,
+        hoop_3d:  Optional[np.ndarray] = None,
     ) -> Outcome:
-        """Bounding-box overlap + ball moving downward."""
+        """Bounding-box overlap + ball moving downward, with an optional
+        3D sanity gate to reject balls that pass IN FRONT of the rim and
+        only happen to overlap its pixel bbox.
+        """
         if tracker.position_2d is None:
             return Outcome.PENDING
 
@@ -626,11 +726,26 @@ class ShotDetector:
 
         # Expand hoop bbox slightly
         pad = 20
-        if (hx1-pad <= bx <= hx2+pad) and (hy1-pad <= by <= hy2+pad):
-            self._dbg_classify_reason = "2D ball inside padded hoop bbox while descending"
-            return Outcome.MAKE
+        if not ((hx1-pad <= bx <= hx2+pad) and (hy1-pad <= by <= hy2+pad)):
+            return Outcome.PENDING
 
-        return Outcome.PENDING
+        # 3D sanity gate — when both 3-D positions are known, the ball must be
+        # horizontally near the hoop in world space (not just in pixel space).
+        # This rejects balls that pass IN FRONT of the rim (closer to camera)
+        # whose pixel coords overlap the rim bbox but actually missed in 3D.
+        if tracker.position_3d is not None and hoop_3d is not None:
+            dx = float(tracker.position_3d[0]) - float(hoop_3d[0])
+            dz = float(tracker.position_3d[2]) - float(hoop_3d[2])
+            horiz = float(np.hypot(dx, dz))
+            if horiz > config.MAKE_BBOX_3D_GATE_M:
+                self._dbg_classify_reason = (
+                    f"2D bbox overlap rejected: ball was {horiz:.2f} m horizontally "
+                    f"from rim in 3D (>{config.MAKE_BBOX_3D_GATE_M:.2f} m) — likely passed in front"
+                )
+                return Outcome.PENDING
+
+        self._dbg_classify_reason = "2D ball inside padded hoop bbox while descending (3D-validated)"
+        return Outcome.MAKE
 
     # ── finalise ──────────────────────────────────────────────────────────────
 

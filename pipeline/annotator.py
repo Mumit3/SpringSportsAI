@@ -44,6 +44,7 @@ class Annotator:
     _RESULT_DISPLAY_FRAMES   = 120   # 4 sec @ 30 fps — full display budget
     _MIN_FRAMES_BEFORE_CLEAR = 60    # never clear earlier than this (2 sec)
     _PICKUP_CONFIRM_FRAMES   = 15    # ball must look "picked up" this many in a row
+    _NEW_SHOT_FADE_FRAMES    = 10    # when a new shot starts, drop the old banner within this many frames
 
     # ── main entry ────────────────────────────────────────────────────────────
 
@@ -57,6 +58,7 @@ class Annotator:
         hoop_3d:   Optional[np.ndarray],
         frame_idx: int,
         body_keypoints_2d: Optional[List] = None,
+        shot_in_flight:    bool = False,
     ) -> np.ndarray:
         out = frame.copy()
 
@@ -75,6 +77,15 @@ class Annotator:
             self._last_outcome = shot.outcome
             self._last_metrics = shot.to_dict()
             self._post_shot_pickup_count = 0   # fresh shot — reset pickup detector
+
+        # New shot started while a previous result is still on screen — cap
+        # remaining display to the fade window so the stale banner clears
+        # quickly instead of lingering through the new shot.
+        if (shot_in_flight
+                and shot is None
+                and self._result_display_frames > self._NEW_SHOT_FADE_FRAMES):
+            self._result_display_frames = self._NEW_SHOT_FADE_FRAMES
+            self._post_shot_pickup_count = 0
 
         # Early-clear the result overlay once the shooter has the ball back —
         # but only after the result has been on screen for at least

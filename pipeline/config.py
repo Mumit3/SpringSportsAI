@@ -162,6 +162,20 @@ MAKE_CHECK_FRAMES = 60
 MAKE_POST_RIM_FRAMES   = 3       # ~100 ms at 30 fps
 MAKE_POST_RIM_DRIFT_M  = 0.50    # 50 cm: real makes drop straight down through the net
 
+# 2-D bbox MAKE classifier — when ball's 3D position is also known, require
+# the ball to be horizontally near the hoop's 3D centre. Stops false MAKEs
+# from balls that pass IN FRONT of the rim and happen to overlap its pixel
+# bbox without actually going through.
+MAKE_BBOX_3D_GATE_M = 0.50
+
+# Method C — trajectory-direction shot trigger. Fires when the ball is
+# clearly headed toward the rim from a distance, even if body tracking
+# missed the release. All conditions must hold simultaneously.
+SHOT_TRIGGER_MIN_RIM_DIST_M  = 1.0    # ball must be at least this far from rim (no layup-range false fires)
+SHOT_TRIGGER_MIN_VY_MPS      = 0.5    # ball must be ascending in 3D
+SHOT_TRIGGER_MIN_TOWARD_MPS  = 1.0    # horizontal velocity component toward rim
+SHOT_TRIGGER_OBS_FRAMES      = 5      # window of recent observations to compute velocity from
+
 # Print per-shot diagnostic block at finalise time. Useful for figuring out
 # why a shot was classified the way it was — shows closest 3-D approach,
 # cylinder entry, 2-D bbox proximity, and which rule fired.

@@ -306,6 +306,7 @@ def _process_svo_inner(
                     frame.image, ball_det, hoop_det,
                     tracker_result, completed_shot, hoop_3d, idx,
                     body_keypoints_2d=body_keypoints_2d if body_keypoints_2d else None,
+                    shot_in_flight=shot_det.is_in_flight,
                 )
                 writer.write(annotated)
 
