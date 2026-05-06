@@ -6,6 +6,18 @@ SVO_DIR    = ROOT_DIR / "svo_files"
 OUTPUT_DIR = ROOT_DIR / "outputs"
 MODELS_DIR = ROOT_DIR / "models"
 
+# Curated SVO folders shown as a dropdown in the web UI. First entry is the
+# default. The folder names are real top-level directory names under ROOT_DIR;
+# the labels are what the dropdown displays.
+SVO_FOLDERS = [
+    ("expo",          "Expo"),
+    ("svo_files",     "Default"),
+    ("new_svo_files", "New Recordings"),
+    ("mini",          "Mini Hoop"),
+]
+SVO_FOLDER_DEFAULT = SVO_FOLDERS[0][0]
+SVO_FOLDER_NAMES = [name for name, _ in SVO_FOLDERS]
+
 # Default model: YOLOv8s pretrained on COCO (auto-downloaded by ultralytics).
 # To use a custom basketball model, set this to the .pt file path.
 YOLO_MODEL_PATH = str(MODELS_DIR / "basketball.pt")   # custom if exists
@@ -97,7 +109,7 @@ SHOT_COOLDOWN_FRAMES   = 40    # minimum frames between detected shots (1.33 s @
 # Real rim radius is 0.23 m, but yolov8s @ imgsz=1280 places ball/hoop bboxes a
 # few pixels different from yolov8n @ 640, which shifts the 3-D hoop center by
 # a few cm. 0.30 m absorbs that shift so makes still register.
-MAKE_CYLINDER_RADIUS = 0.35
+MAKE_CYLINDER_RADIUS = 0.30
 # How many frames after shot release to keep checking for make/miss
 MAKE_CHECK_FRAMES = 60
 

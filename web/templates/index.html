@@ -28,6 +28,14 @@
   <section class="section">
     <div class="section-head">
       <span class="section-label">Process SVO</span>
+      <select id="folder-picker" class="form-input folder-picker"
+              title="Folder to pick videos from">
+        {% for opt in folder_options %}
+        <option value="{{ opt.name }}" {% if opt.selected %}selected{% endif %}>
+          {{ opt.label }}
+        </option>
+        {% endfor %}
+      </select>
       <span class="section-meta">{{ svo_files|length }} FILES</span>
     </div>
 
@@ -65,9 +73,9 @@
     </div>
     {% else %}
     <p class="hint">
-      No <code>.svo</code> / <code>.svo2</code> files found anywhere under the
-      project. <a href="/record">Record one</a> or copy a recording into
-      <code>svo_files/</code>.
+      No <code>.svo</code> / <code>.svo2</code> files in the
+      <code>{{ active_folder }}/</code> folder.
+      <a href="/record">Record one</a> or copy a file into that folder.
     </p>
     {% endif %}
 
@@ -83,33 +91,41 @@
     </div>
   </section>
 
-  <!-- ── Previous Sessions ────────────────────────────────────── -->
+  <!-- ── Previous Sessions (password-gated) ───────────────────── -->
   {% if sessions %}
-  <section class="section">
-    <div class="section-head">
-      <span class="section-label">Previous Sessions</span>
-    </div>
+  <section class="section sessions-section locked" id="sessions-section">
+    <button type="button" class="sessions-toggle" id="sessions-toggle"
+            aria-expanded="false">
+      <span class="sessions-toggle-label">
+        <span class="sessions-lock-icon">🔒</span>
+        Previous Sessions
+        <span class="sessions-count">({{ sessions|length }})</span>
+      </span>
+      <span class="sessions-toggle-hint">click to unlock</span>
+    </button>
 
-    <div class="sessions-table">
-      <div class="sessions-thead">
-        <span class="col-session">Session</span>
-        <span class="col-num">Shots</span>
-        <span class="col-num">Makes</span>
-        <span class="col-num">FG%</span>
+    <div class="sessions-body" id="sessions-body" hidden>
+      <div class="sessions-table">
+        <div class="sessions-thead">
+          <span class="col-session">Session</span>
+          <span class="col-num">Shots</span>
+          <span class="col-num">Makes</span>
+          <span class="col-num">FG%</span>
+        </div>
+        {% for s in sessions %}
+        {% set sm = s.summary %}
+        {% set mode = sm.mode if sm.mode else 'regulation' %}
+        <a href="/results/{{ s.job_id }}" class="sessions-row">
+          <span class="col-session">
+            <span class="mode-badge mode-{{ mode }}">{{ 'MINI' if mode == 'mini' else 'REG' }}</span>
+            {{ s.job_id }}
+          </span>
+          <span class="col-num">{{ sm.total_shots }}</span>
+          <span class="col-num make">{{ sm.makes }}</span>
+          <span class="col-num pct">{{ sm.fg_pct }}</span>
+        </a>
+        {% endfor %}
       </div>
-      {% for s in sessions %}
-      {% set sm = s.summary %}
-      {% set mode = sm.mode if sm.mode else 'regulation' %}
-      <a href="/results/{{ s.job_id }}" class="sessions-row">
-        <span class="col-session">
-          <span class="mode-badge mode-{{ mode }}">{{ 'MINI' if mode == 'mini' else 'REG' }}</span>
-          {{ s.job_id }}
-        </span>
-        <span class="col-num">{{ sm.total_shots }}</span>
-        <span class="col-num make">{{ sm.makes }}</span>
-        <span class="col-num pct">{{ sm.fg_pct }}</span>
-      </a>
-      {% endfor %}
     </div>
   </section>
   {% endif %}

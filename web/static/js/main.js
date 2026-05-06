@@ -144,4 +144,53 @@ document.addEventListener('DOMContentLoaded', () => {
     setProgress(0, `Resuming ${incomingJob}…`);
     listenForProgress(incomingJob);
   }
+
+  // ── Folder picker: reload page with ?folder=... when changed ─────────────
+  const folderPicker = document.getElementById('folder-picker');
+  if (folderPicker) {
+    folderPicker.addEventListener('change', () => {
+      const url = new URL(window.location.href);
+      url.searchParams.set('folder', folderPicker.value);
+      // Drop any incoming-job param so reloading doesn't auto-resume
+      url.searchParams.delete('job');
+      window.location.href = url.toString();
+    });
+  }
+
+  // ── Previous Sessions password gate (cosmetic — see threat-model in design) ─
+  const SESSIONS_PASSWORD = 'mumitmichael';
+  const SESSIONS_UNLOCK_KEY = 'sessions_unlocked';
+  const sessionsToggle = document.getElementById('sessions-toggle');
+  const sessionsBody   = document.getElementById('sessions-body');
+  const sessionsSection = document.getElementById('sessions-section');
+
+  function unlockSessions() {
+    if (sessionsBody)   sessionsBody.hidden = false;
+    if (sessionsSection) sessionsSection.classList.remove('locked');
+    if (sessionsToggle) sessionsToggle.setAttribute('aria-expanded', 'true');
+  }
+
+  if (sessionsToggle && sessionsBody) {
+    if (sessionStorage.getItem(SESSIONS_UNLOCK_KEY) === '1') {
+      unlockSessions();
+    }
+    sessionsToggle.addEventListener('click', () => {
+      const expanded = sessionsToggle.getAttribute('aria-expanded') === 'true';
+      if (expanded) {
+        sessionsBody.hidden = true;
+        sessionsSection.classList.add('locked');
+        sessionsToggle.setAttribute('aria-expanded', 'false');
+        sessionStorage.removeItem(SESSIONS_UNLOCK_KEY);
+        return;
+      }
+      const pw = window.prompt('Enter password to view previous sessions:');
+      if (pw === null) return;          // user cancelled
+      if (pw === SESSIONS_PASSWORD) {
+        sessionStorage.setItem(SESSIONS_UNLOCK_KEY, '1');
+        unlockSessions();
+      } else {
+        window.alert('Incorrect password.');
+      }
+    });
+  }
 });

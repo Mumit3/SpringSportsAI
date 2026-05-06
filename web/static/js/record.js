@@ -9,7 +9,6 @@ document.addEventListener('DOMContentLoaded', () => {
   const labelInput     = document.getElementById('record-label');
   const resolutionSel  = document.getElementById('record-resolution');
   const folderSel      = document.getElementById('record-folder');
-  const folderCustom   = document.getElementById('record-folder-custom');
 
   const startBtn       = document.getElementById('start-btn');
   const stopBtn        = document.getElementById('stop-btn');
@@ -28,16 +27,6 @@ document.addEventListener('DOMContentLoaded', () => {
   let pollTimer = null;
   let lastSvoPath = null;
 
-  // Toggle the custom folder text input
-  folderSel.addEventListener('change', () => {
-    if (folderSel.value === '__custom__') {
-      folderCustom.classList.remove('form-input-hidden');
-      folderCustom.focus();
-    } else {
-      folderCustom.classList.add('form-input-hidden');
-    }
-  });
-
   startBtn.addEventListener('click', async () => {
     const label = (labelInput.value || '').trim();
     if (!label) {
@@ -45,14 +34,7 @@ document.addEventListener('DOMContentLoaded', () => {
       return;
     }
 
-    let folder = folderSel.value;
-    if (folder === '__custom__') {
-      folder = (folderCustom.value || '').trim();
-      if (!folder) {
-        folderCustom.focus();
-        return;
-      }
-    }
+    const folder = folderSel.value;
 
     const [resolution, fps] = resolutionSel.value.split('|');
 

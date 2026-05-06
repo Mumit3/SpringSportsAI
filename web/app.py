@@ -86,52 +86,91 @@ def _get_recorder():
 
 # ── helpers ───────────────────────────────────────────────────────────────────
 
-def _list_svo_files():
-    """Recursively find all .svo / .svo2 files under the project root.
+def _resolve_folder(name: str) -> str:
+    """Validate a folder name against the curated dropdown list.
 
-    Returns dicts with relative paths so the UI can show where each lives.
-    Mode (regulation vs. mini) is chosen at click time per-file in the UI,
-    not based on file location.
+    Returns the canonical name (one of config.SVO_FOLDER_NAMES) or the default
+    if the input doesn't match. Prevents path traversal via folder param.
     """
-    root = config.ROOT_DIR
+    name = (name or "").strip()
+    if name in config.SVO_FOLDER_NAMES:
+        return name
+    return config.SVO_FOLDER_DEFAULT
+
+
+def _list_svo_files(folder: str = None):
+    """List .svo / .svo2 files inside the selected curated folder (non-recursive).
+
+    `folder` is one of config.SVO_FOLDER_NAMES; falls back to the default if
+    invalid. Returns dicts shaped for the index file-card grid.
+    """
+    folder = _resolve_folder(folder)
+    folder_path = config.ROOT_DIR / folder
     files = []
-    for ext in ("*.svo", "*.svo2"):
-        for p in root.rglob(ext):
-            try:
-                rel = p.relative_to(root)
-            except ValueError:
-                continue
-            if rel.parts and rel.parts[0] == "outputs":
-                continue
-            files.append({
-                "name": p.name,
-                "path": str(rel).replace("\\", "/"),
-                "folder": str(rel.parent).replace("\\", "/"),
-                "size_mb": round(p.stat().st_size / (1024*1024), 1),
-            })
-    files.sort(key=lambda f: (f["folder"], f["name"]))
+    if folder_path.is_dir():
+        for ext in ("*.svo", "*.svo2"):
+            for p in sorted(folder_path.glob(ext)):
+                try:
+                    rel = p.relative_to(config.ROOT_DIR)
+                except ValueError:
+                    continue
+                files.append({
+                    "name": p.name,
+                    "path": str(rel).replace("\\", "/"),
+                    "folder": folder,
+                    "size_mb": round(p.stat().st_size / (1024*1024), 1),
+                })
+    files.sort(key=lambda f: f["name"])
     return files
 
 
-def _list_record_folders():
-    """List folder names directly under SpringSportsAI/ for the recording UI.
+def _curated_folder_options(selected: str = None):
+    """Return the dropdown option list (name, label, selected_flag)."""
+    selected = _resolve_folder(selected)
+    return [
+        {"name": name, "label": label, "selected": name == selected}
+        for name, label in config.SVO_FOLDERS
+    ]
 
-    Hides typical noise (.git, outputs, web, etc.) so the dropdown is short.
+
+def _ensure_curated_folders():
+    """Create each curated SVO folder at the project root if missing.
+
+    Also performs a one-time migration of any files in the old
+    `svo_files/mini/` location to the new top-level `mini/`.
     """
-    root = config.ROOT_DIR
-    hide = {"outputs", "web", "pipeline", "tools", "tests", "models", ".git", ".claude", "__pycache__"}
-    folders = []
-    for p in sorted(root.iterdir()):
-        if not p.is_dir():
-            continue
-        if p.name.startswith(".") or p.name.startswith("__"):
-            continue
-        if p.name in hide:
-            continue
-        folders.append(p.name)
-    if "svo_files" not in folders:
-        folders.insert(0, "svo_files")
-    return folders
+    for name, _ in config.SVO_FOLDERS:
+        (config.ROOT_DIR / name).mkdir(exist_ok=True)
+
+    legacy_mini = config.SVO_DIR / "mini"
+    new_mini    = config.ROOT_DIR / "mini"
+    if legacy_mini.is_dir() and legacy_mini.exists():
+        moved = 0
+        for p in legacy_mini.iterdir():
+            if p.is_file() and p.suffix.lower() in (".svo", ".svo2"):
+                target = new_mini / p.name
+                if not target.exists():
+                    try:
+                        p.rename(target)
+                        moved += 1
+                    except OSError as e:
+                        print(f"[Startup] Could not migrate {p}: {e}")
+        # Remove the now-empty legacy dir if we cleared it
+        try:
+            if not any(legacy_mini.iterdir()):
+                legacy_mini.rmdir()
+        except OSError:
+            pass
+        if moved:
+            print(f"[Startup] Migrated {moved} file(s) from svo_files/mini/ to mini/")
+
+
+def _list_record_folders():
+    """Folder names available in the record-page dropdown.
+
+    For consistency with the index page, this is the curated list.
+    """
+    return config.SVO_FOLDER_NAMES
 
 
 def _flask_default_label() -> str:
@@ -225,19 +264,23 @@ def _aggregate_stats(sessions):
 
 @app.route("/")
 def index():
+    folder    = _resolve_folder(request.args.get("folder"))
     sessions  = _list_results()
-    svo_files = _list_svo_files()
+    svo_files = _list_svo_files(folder)
     return render_template(
         "index.html",
-        svo_files = svo_files,
-        sessions  = sessions,
-        agg       = _aggregate_stats(sessions),
+        svo_files       = svo_files,
+        sessions        = sessions,
+        agg             = _aggregate_stats(sessions),
+        folder_options  = _curated_folder_options(folder),
+        active_folder   = folder,
     )
 
 
 @app.route("/api/files")
 def api_files():
-    return jsonify({"files": _list_svo_files()})
+    folder = _resolve_folder(request.args.get("folder"))
+    return jsonify({"folder": folder, "files": _list_svo_files(folder)})
 
 
 @app.route("/api/folders")
@@ -401,8 +444,10 @@ def serve_video(job_id: str):
 def record_page():
     return render_template(
         "record.html",
-        folders     = _list_record_folders(),
-        recorder_ok = _RECORDER_AVAILABLE,
+        folders        = _list_record_folders(),
+        folder_options = _curated_folder_options(),
+        active_folder  = config.SVO_FOLDER_DEFAULT,
+        recorder_ok    = _RECORDER_AVAILABLE,
     )
 
 
@@ -414,7 +459,7 @@ def api_record_start():
 
     data       = request.get_json(force=True)
     label      = (data.get("label") or "").strip()
-    folder     = (data.get("folder") or "svo_files").strip()
+    folder     = _resolve_folder(data.get("folder"))
     resolution = (data.get("resolution") or "HD2K").strip()
     fps        = int(data.get("fps") or 15)
 
@@ -431,11 +476,9 @@ def api_record_start():
             if j["status"] == "running":
                 return jsonify({"error": "A processing job is running — wait for it to finish"}), 409
 
+    # _resolve_folder already constrained the value to the curated list;
+    # construct the path against ROOT_DIR.
     save_dir = (config.ROOT_DIR / folder).resolve()
-    try:
-        save_dir.relative_to(config.ROOT_DIR.resolve())
-    except ValueError:
-        return jsonify({"error": "Folder outside project"}), 400
     save_dir.mkdir(parents=True, exist_ok=True)
 
     svo_path = save_dir / f"{label}.svo2"
@@ -582,5 +625,6 @@ def api_session_delete(job_id: str):
 # ── run ───────────────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
+    _ensure_curated_folders()
     # Bind on all interfaces so it's reachable over the Jetson hotspot
     app.run(host="0.0.0.0", port=5000, debug=False, threaded=True)

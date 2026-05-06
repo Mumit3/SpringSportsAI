@@ -40,14 +40,13 @@
       <div class="form-row">
         <label class="form-label" for="record-folder">Save folder</label>
         <select id="record-folder" class="form-input">
-          {% for f in folders %}
-          <option value="{{ f }}" {% if f == 'svo_files' %}selected{% endif %}>{{ f }}</option>
+          {% for opt in folder_options %}
+          <option value="{{ opt.name }}" {% if opt.selected %}selected{% endif %}>
+            {{ opt.label }}
+          </option>
           {% endfor %}
-          <option value="__custom__">+ New folder…</option>
         </select>
-        <input id="record-folder-custom" class="form-input form-input-hidden"
-               type="text" placeholder="new_folder_name" autocomplete="off"/>
-        <div class="form-hint">Inside <code>SpringSportsAI/</code>, max 60 s</div>
+        <div class="form-hint">Saved into the chosen top-level folder, max 60 s</div>
       </div>
     </div>
 
