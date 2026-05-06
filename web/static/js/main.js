@@ -124,6 +124,10 @@ document.addEventListener('DOMContentLoaded', () => {
           activeEventSource.close();
           activeJobId = null;
           setProgress(0, `Error: ${msg.message}`);
+        } else if (msg.status === 'cancelling') {
+          // Worker is still finishing the current frame + flushing the
+          // partial MP4; don't redirect yet, just update the message.
+          setProgress(pct, msg.message || 'Cancelling…');
         } else if (msg.status === 'cancelled') {
           activeEventSource.close();
           activeJobId = null;

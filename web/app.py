@@ -386,7 +386,12 @@ def api_process():
 @app.route("/api/process/cancel/<job_id>", methods=["POST"])
 def api_cancel(job_id: str):
     """Signal a running job to stop. The worker will exit at the next loop
-    iteration, delete its partial output, and emit a `cancelled` SSE event."""
+    iteration, delete its partial output, and emit a `cancelled` SSE event.
+
+    Pushes an immediate `cancelling` status to the SSE queue so the UI shows
+    feedback while the actual cleanup (waiting for the current frame to
+    finish + flushing the partial MP4) finishes — that takes a few seconds.
+    """
     if job_id not in _jobs:
         abort(404)
     job = _jobs[job_id]
@@ -397,6 +402,14 @@ def api_cancel(job_id: str):
             "error": f"Job is not running (status={status}); cannot cancel.",
         }), 409
     job["cancel_event"].set()
+    # Push immediate "cancelling" feedback so the user sees the message change
+    # right away. The terminal "cancelled" message follows once the worker
+    # actually exits and deletes partial files.
+    job["queue"].put({
+        "progress": job.get("progress", 0.0),
+        "message":  "Cancelling — flushing partial files…",
+        "status":   "cancelling",
+    })
     return jsonify({"ok": True, "job_id": job_id}), 202
 
 
