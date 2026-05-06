@@ -223,11 +223,12 @@ def _delete_partial_outputs(svo_path: str, label: str) -> None:
 
 
 def _run_job(
-    job_id:    str,
-    svo_path:  str,
-    label:     str,
-    profile:   str  = "regulation",
-    ball_only: bool = False,
+    job_id:      str,
+    svo_path:    str,
+    label:       str,
+    profile:     str  = "regulation",
+    ball_only:   bool = False,
+    strict_make: bool = False,
 ) -> None:
     """Worker function executed in a background thread."""
     q = _jobs[job_id]["queue"]
@@ -253,6 +254,7 @@ def _run_job(
             profile      = profile,
             ball_only    = ball_only,
             cancel_check = _cancel_check,
+            strict_make  = strict_make,
         )
 
         with _jobs_lock:
@@ -321,11 +323,12 @@ def api_folders():
 
 @app.route("/api/process", methods=["POST"])
 def api_process():
-    data     = request.get_json(force=True)
-    rel_path = (data.get("path") or data.get("filename") or "").strip()
-    label    = (data.get("label") or "").strip() or _flask_default_label()
-    mode     = (data.get("mode") or "regulation").strip()
-    ball_only = bool(data.get("ball_only", False))
+    data       = request.get_json(force=True)
+    rel_path   = (data.get("path") or data.get("filename") or "").strip()
+    label      = (data.get("label") or "").strip() or _flask_default_label()
+    mode       = (data.get("mode") or "regulation").strip()
+    ball_only  = bool(data.get("ball_only", False))
+    strict_make = bool(data.get("strict_make", False))
 
     if mode not in ("regulation", "mini"):
         return jsonify({"error": f"Unknown mode: {mode}"}), 400
@@ -370,12 +373,13 @@ def api_process():
             "label":        label,
             "mode":         mode,
             "ball_only":    ball_only,
+            "strict_make":  strict_make,
             "cancel_event": threading.Event(),
         }
 
     t = threading.Thread(
         target=_run_job,
-        args=(job_id, str(svo_path), label, mode, ball_only),
+        args=(job_id, str(svo_path), label, mode, ball_only, strict_make),
         daemon=True,
     )
     t.start()

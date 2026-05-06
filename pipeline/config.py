@@ -162,6 +162,12 @@ MAKE_CHECK_FRAMES = 60
 MAKE_POST_RIM_FRAMES   = 3       # ~100 ms at 30 fps
 MAKE_POST_RIM_DRIFT_M  = 0.50    # 50 cm: real makes drop straight down through the net
 
+# Stricter values used only when a job opts in via the per-card "Strict
+# make/miss" checkbox. Tightening these makes MAKE harder to fire and so
+# reduces false MAKEs on rim-outs and balls that just pass near the rim.
+STRICT_MAKE_POST_RIM_DRIFT_M = 0.35
+STRICT_MAKE_BBOX_3D_GATE_M   = 0.30
+
 # 2-D bbox MAKE classifier — when ball's 3D position is also known, require
 # the ball to be horizontally near the hoop's 3D centre. Stops false MAKEs
 # from balls that pass IN FRONT of the rim and happen to overlap its pixel

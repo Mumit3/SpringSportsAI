@@ -76,23 +76,31 @@ document.addEventListener('DOMContentLoaded', () => {
         const ballOnlyEl = card.querySelector('.file-card-ball-only');
         const ballOnly = mode === 'mini'
                          && !!(ballOnlyEl && ballOnlyEl.checked);
-        startProcessing(path, label, mode, ballOnly);
+        const strictEl = card.querySelector('.file-card-strict-make');
+        const strictMake = !!(strictEl && strictEl.checked);
+        startProcessing(path, label, mode, ballOnly, strictMake);
       });
     }
   });
 
-  function startProcessing(path, label, mode, ballOnly) {
+  function startProcessing(path, label, mode, ballOnly, strictMake) {
     cards.forEach(c => c.classList.remove('selected'));
     progressPanel.classList.remove('hidden');
-    const tag = mode === 'mini' ? (ballOnly ? 'mini · ball-only' : 'mini') : 'regulation';
-    setProgress(0, `Starting ${path} [${tag}]…`);
+    const tags = [mode];
+    if (ballOnly)   tags.push('ball-only');
+    if (strictMake) tags.push('strict-make');
+    setProgress(0, `Starting ${path} [${tags.join(' · ')}]…`);
 
     if (activeEventSource) activeEventSource.close();
 
     fetch('/api/process', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ path, label, mode, ball_only: !!ballOnly }),
+      body: JSON.stringify({
+        path, label, mode,
+        ball_only:   !!ballOnly,
+        strict_make: !!strictMake,
+      }),
     })
     .then(r => r.json())
     .then(data => {

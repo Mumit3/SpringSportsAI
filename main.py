@@ -102,6 +102,7 @@ def process_svo(
     profile:  str = "regulation",
     ball_only: bool = False,
     cancel_check: Optional[Callable[[], bool]] = None,
+    strict_make: bool = False,
 ) -> dict:
     """Run the full pipeline on an SVO file.
 
@@ -123,6 +124,7 @@ def process_svo(
     with profile_scope(profile):
         return _process_svo_inner(
             svo_path, label, progress_cb, profile, ball_only, cancel_check,
+            strict_make,
         )
 
 
@@ -133,6 +135,7 @@ def _process_svo_inner(
     profile:      str,
     ball_only:    bool,
     cancel_check: Optional[Callable[[], bool]] = None,
+    strict_make:  bool = False,
 ) -> dict:
     svo_path = Path(svo_path)
     stem     = svo_path.stem
@@ -150,7 +153,10 @@ def _process_svo_inner(
         if progress_cb:
             progress_cb(frac, msg)
 
-    mode_msg = f" [profile={profile}{', ball-only' if ball_only else ''}]"
+    flags = []
+    if ball_only:   flags.append("ball-only")
+    if strict_make: flags.append("strict-make")
+    mode_msg = f" [profile={profile}" + (f", {', '.join(flags)}" if flags else "") + "]"
     _cb(0.0, f"Opening SVO file…{mode_msg}")
 
     # ── initialise components ─────────────────────────────────────────────────
@@ -166,6 +172,7 @@ def _process_svo_inner(
         fps          = reader.info.fps,
         frame_width  = reader.info.width,
         frame_height = reader.info.height,
+        strict_make  = strict_make,
     )
     analytics = Analytics(
         svo_filename = svo_path.name,
@@ -381,6 +388,13 @@ def _cli():
         help="Skip rim detection and shot classification. Tracks the ball "
              "across the whole video for trajectory visualisation only.",
     )
+    parser.add_argument(
+        "--strict-make",
+        action="store_true",
+        help="Use stricter make/miss thresholds (tighter post-rim drift and "
+             "tighter 2-D bbox 3-D gate). Reduces false MAKEs on rim-outs "
+             "and balls passing near the rim.",
+    )
     args = parser.parse_args()
 
     def _print_progress(frac: float, msg: str):
@@ -395,6 +409,7 @@ def _cli():
         progress_cb = _print_progress,
         profile     = args.profile,
         ball_only   = args.ball_only,
+        strict_make = args.strict_make,
     )
     print()   # newline after progress bar
 

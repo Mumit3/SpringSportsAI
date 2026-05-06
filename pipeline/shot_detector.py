@@ -74,10 +74,20 @@ class ShotDetector:
     a shot is newly classified, otherwise None.
     """
 
-    def __init__(self, fps: float, frame_width: int, frame_height: int):
+    def __init__(
+        self,
+        fps:         float,
+        frame_width: int,
+        frame_height: int,
+        strict_make: bool = False,
+    ):
         self._fps   = fps
         self._fw    = frame_width
         self._fh    = frame_height
+        # When True, classifiers use the STRICT_* thresholds (tighter drift,
+        # tighter 2-D bbox 3-D gate). Trades borderline-make recall for fewer
+        # false MAKEs on rim-outs and near-rim balls.
+        self._strict_make = bool(strict_make)
 
         self._state       = _ArcState.IDLE
         self._cooldown    = 0
@@ -609,11 +619,14 @@ class ShotDetector:
         if len(below_dists) < config.MAKE_POST_RIM_FRAMES:
             return Outcome.PENDING
 
+        drift_thresh = (config.STRICT_MAKE_POST_RIM_DRIFT_M
+                        if self._strict_make
+                        else config.MAKE_POST_RIM_DRIFT_M)
         max_drift = max(below_dists)
-        if max_drift > config.MAKE_POST_RIM_DRIFT_M:
+        if max_drift > drift_thresh:
             self._dbg_classify_reason = (
                 f"Zone classifier: ball drifted {max_drift:.2f} m sideways "
-                f"after rim contact (>{config.MAKE_POST_RIM_DRIFT_M:.2f} m) — deflection"
+                f"after rim contact (>{drift_thresh:.2f} m) — deflection"
             )
             return Outcome.MISS
 
@@ -734,13 +747,16 @@ class ShotDetector:
         # This rejects balls that pass IN FRONT of the rim (closer to camera)
         # whose pixel coords overlap the rim bbox but actually missed in 3D.
         if tracker.position_3d is not None and hoop_3d is not None:
+            gate = (config.STRICT_MAKE_BBOX_3D_GATE_M
+                    if self._strict_make
+                    else config.MAKE_BBOX_3D_GATE_M)
             dx = float(tracker.position_3d[0]) - float(hoop_3d[0])
             dz = float(tracker.position_3d[2]) - float(hoop_3d[2])
             horiz = float(np.hypot(dx, dz))
-            if horiz > config.MAKE_BBOX_3D_GATE_M:
+            if horiz > gate:
                 self._dbg_classify_reason = (
                     f"2D bbox overlap rejected: ball was {horiz:.2f} m horizontally "
-                    f"from rim in 3D (>{config.MAKE_BBOX_3D_GATE_M:.2f} m) — likely passed in front"
+                    f"from rim in 3D (>{gate:.2f} m) — likely passed in front"
                 )
                 return Outcome.PENDING
 
