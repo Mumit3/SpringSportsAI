@@ -213,12 +213,17 @@ def _process_svo_inner(
                 if cancel_check is not None and cancel_check():
                     raise CancelledError("cancelled by caller")
 
-                # ── dynamic ball confidence during flight ─────────────────────────
-                ball_conf = (
-                    config.BALL_CONF_FLIGHT
-                    if tracker._in_flight
-                    else config.BALL_CONF_NORMAL
-                )
+                # ── dynamic ball confidence ───────────────────────────────────────
+                # Three tiers: NORMAL when YOLO has the ball, FLIGHT when in
+                # flight, RECOVERY when we've lost the ball for several frames.
+                # Working videos never reach the recovery tier (they don't lose
+                # the ball for long), so this can't regress them.
+                if tracker._missed >= config.BALL_RECOVERY_MISS_THRESHOLD:
+                    ball_conf = config.BALL_CONF_RECOVERY
+                elif tracker._in_flight:
+                    ball_conf = config.BALL_CONF_FLIGHT
+                else:
+                    ball_conf = config.BALL_CONF_NORMAL
 
                 # ── detect ────────────────────────────────────────────────────────
                 # Optional: dim non-foreground pixels before YOLO sees the

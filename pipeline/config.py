@@ -47,8 +47,14 @@ PREVIEW_MAX_WIDTH       = 800      # downscale MJPEG preview for browser bandwid
 PREVIEW_JPEG_QUALITY    = 70
 
 # ── Detection thresholds ─────────────────────────────────────────────────────
-BALL_CONF_NORMAL = 0.35
-BALL_CONF_FLIGHT = 0.18   # lowered while ball is confirmed in-flight
+BALL_CONF_NORMAL   = 0.35
+BALL_CONF_FLIGHT   = 0.10   # lowered while ball is confirmed in-flight
+# Recovery mode: when the tracker has missed the ball for many consecutive
+# frames, drop YOLO confidence aggressively to recover faint detections.
+# Working videos never enter this mode (they don't lose the ball for long),
+# so this can't regress them — it only kicks in when detection is failing.
+BALL_CONF_RECOVERY = 0.05
+BALL_RECOVERY_MISS_THRESHOLD = 5   # consecutive missed frames before recovery
 HOOP_CONF        = 0.25
 HOOP_POLL_FRAMES = 5      # re-run hoop detector every N frames (post-calibration)
 
@@ -77,7 +83,7 @@ KF_MAX_MISSED_FRAMES  = 60   # keep Kalman-only estimate up to this limit
 
 # Depth-based ball size validation
 BALL_DIAMETER_M       = 0.24   # regulation basketball
-BALL_SIZE_TOLERANCE   = 0.5    # accept ±50 % of expected pixel size at given depth
+BALL_SIZE_TOLERANCE   = 0.7    # accept ±70 % of expected pixel size at given depth
 
 # 3-D plausibility filter — reject ball detections at impossible positions
 # (a real basketball during a shot can't be at floor level, right against the
