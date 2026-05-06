@@ -29,13 +29,21 @@ class Annotator:
 
         # Active shot overlay timer
         self._result_display_frames = 0
+        # The original budget the most recent shot started with — needed so
+        # early-clear logic can tell how long the result has actually been on
+        # screen, regardless of fps differences.
+        self._result_display_budget = 0
         self._last_outcome: Optional[Outcome] = None
         self._last_metrics: Optional[dict]    = None
         # Counter of consecutive frames where the ball appears to be back in
-        # the shooter's hands (low + far from hoop). When this passes a small
-        # threshold we clear the make/miss display early so the next shot
-        # starts with no stale overlay.
+        # the shooter's hands (low + far from hoop). Must hit
+        # _PICKUP_CONFIRM_FRAMES before the display clears early.
         self._post_shot_pickup_count = 0
+
+    # Display tuning — minimum on-screen time, then optional early-clear.
+    _RESULT_DISPLAY_FRAMES   = 120   # 4 sec @ 30 fps — full display budget
+    _MIN_FRAMES_BEFORE_CLEAR = 60    # never clear earlier than this (2 sec)
+    _PICKUP_CONFIRM_FRAMES   = 15    # ball must look "picked up" this many in a row
 
     # ── main entry ────────────────────────────────────────────────────────────
 
@@ -62,19 +70,23 @@ class Annotator:
         self._draw_version(out)
 
         if shot is not None:
-            self._result_display_frames = 90   # show result for 3 s @ 30 fps
+            self._result_display_frames = self._RESULT_DISPLAY_FRAMES
+            self._result_display_budget = self._RESULT_DISPLAY_FRAMES
             self._last_outcome = shot.outcome
             self._last_metrics = shot.to_dict()
             self._post_shot_pickup_count = 0   # fresh shot — reset pickup detector
 
-        # Early-clear the result overlay once the shooter has the ball back.
-        # "Back in hand" is approximated as: ball below the rim by >0.5 m AND
-        # >1.0 m horizontally away from the hoop. We require this for several
-        # consecutive frames so a momentary detection blip doesn't clear early.
+        # Early-clear the result overlay once the shooter has the ball back —
+        # but only after the result has been on screen for at least
+        # _MIN_FRAMES_BEFORE_CLEAR, AND only after we've seen the pickup
+        # condition for several consecutive frames. Both guards protect against
+        # the display vanishing the instant the ball lands somewhere odd.
         if self._result_display_frames > 0:
-            if self._is_ball_picked_up(tracker, hoop_3d):
+            frames_shown = self._result_display_budget - self._result_display_frames
+            can_clear_early = frames_shown >= self._MIN_FRAMES_BEFORE_CLEAR
+            if can_clear_early and self._is_ball_picked_up(tracker, hoop_3d):
                 self._post_shot_pickup_count += 1
-                if self._post_shot_pickup_count >= 3:
+                if self._post_shot_pickup_count >= self._PICKUP_CONFIRM_FRAMES:
                     self._result_display_frames = 0
                     self._post_shot_pickup_count = 0
             else:
