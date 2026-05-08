@@ -1,4 +1,4 @@
-# SpringSportsAI
+# Ai Assisted Sports Analytics
 
 **AI-Assisted Basketball Shot Analytics**
 
